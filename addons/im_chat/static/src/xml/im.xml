@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- vim:fdl=1:
+-->
+<templates xml:space="preserve">
+<t t-name="im.Conversation">
+    <div class="oe_im_chatview_header">
+        <span class="oe_im_chatview_header_name"></span>
+        <span class="oe_im_chatview_nbr_messages"/>
+        <span class="oe_im_chatview_right">
+            <button class="oe_im_chatview_cogs" data-toggle="tooltip" data-placement="top" title="Start Recording"><i class="fa fa-video-camera"> </i></button>
+            <button class="oe_im_chatview_close">×</button>
+        </span>
+    </div>
+    <div class="oe_im_chatview_content">
+        <div class="oe_im_chatview_status"/>
+        <div class="oe_im_chatview_content_bubbles"></div>
+    </div>
+    <div class="oe_im_chatview_footer">
+        <input class="oe_im_chatview_input" t-att-placeholder="widget.inputPlaceholder" />
+    </div>
+</t>
+<t t-name="im.Conversation_bubble">
+    <div class="oe_im_chatview_bubble">
+        <div class="oe_im_chatview_clip">
+            <img class="oe_im_chatview_avatar" t-att-src="avatar_url"/>
+        </div>
+        <div class="oe_im_chatview_from"><t t-esc="user[1]"/></div>
+        <div class="oe_im_chatview_bubble_list">
+            <t t-foreach="items" t-as="item">
+                <div class="oe_im_chatview_bubble_item"><t t-raw="item"/></div>
+            </t>
+        </div>
+        <div class="oe_im_chatview_time"><t t-esc="time"/></div>
+    </div>
+</t>
+<t t-name="im.Conversation_technical_bubble">
+    <div class="oe_im_chatview_bubble_technical">
+        <div class="oe_im_chatview_bubble_list">
+            <div class="oe_im_chatview_technical_content"><t t-raw="technical_message"/></div>
+        </div>
+        <div class="oe_im_chatview_time"><t t-esc="time"/></div>
+    </div>
+</t>
+<t t-name="im.Conversation_date_separator"> 
+    <div class="oe_im_chatview_date_separator">
+        <t t-esc="date"/>
+    </div>
+</t>
+<t t-name="im.UserWidget">
+    <div class="oe_im_user ui-draggable">
+        <span class="oe_im_user_clip">
+            <img t-att-src='widget.user.image_url' class="oe_im_user_avatar"/>
+        </span>
+        <span class="oe_im_user_name"><t t-esc="widget.user.name"/></span>
+        <img t-att-src="_s +'/im_chat/static/src/img/green.png'" t-att-data-im-user-id="widget.user.id" class="oe_im_user_online"/>
+    </div>
+</t>
+<t t-name="im.InstantMessaging">
+    <div class="oe_im">
+        <div class="oe_im_frame_header">
+            <span class="oe_e oe_im_search_icon">ô</span>
+            <input class="oe_im_searchbox" t-att-placeholder="_t('Search users...')"/>
+            <span class="oe_e oe_im_search_clear">[</span>
+        </div>
+        <div class="oe_im_users"></div>
+        <div class="oe_im_content"></div>
+    </div>
+</t>
+<t t-name="im.ImTopButton">
+    <div t-att-title='_t("Display Instant Messaging")' class="oe_topbar_item oe_topbar_imbutton">
+        <span class="oe_e">+</span>
+    </div>
+</t>
+</templates>
