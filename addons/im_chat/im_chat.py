@@ -40,7 +40,7 @@ class Controller(openerp.addons.im.im.Controller):
 
     @openerp.http.route('/im/post', type="json", auth="none")
     def post(self, uuid, message_type, message_content):
-        registry, cr, uid, context = request.registry, request.cr, request.uid, request.context
+        registry, cr, uid, context = request.registry, request.cr, request.session.uid, request.context
         message_id = registry["im.message"].post(cr, uid, uuid, message_type, message_content, context=context)
         return message_id
 

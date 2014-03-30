@@ -203,14 +203,9 @@
             } else {
                 this.set("pending", this.get("pending") + 1);
             }
-            this.c_manager.ensure_users([message.from_id[0]]).then(_.bind(function(users) {
-                var user = users[0];
-                if (! _.contains(this.get("users"), user) && ! _.contains(this.others, user)) {
-                    this.others.push(user);
-                    user.add_watcher();
-                }
-                this._add_bubble(user, message.message, openerp.str_to_datetime(message.date));
-            }, this));
+            console.log('recv',message);
+            //this._add_bubble(message.from_id, message.message, openerp.str_to_datetime(message.date));
+            this._add_bubble(message.from_id, message.message, new Date());
         },
         keydown: function(e) {
             if(e && e.which !== 13) {
@@ -236,6 +231,22 @@
                     return send_it();
             });
         },
+        escape_keep_url: function(str){
+            var url_regex = /(ftp|http|https):\/\/(\w+:{0,1}\w*@)?(\S+)(:[0-9]+)?(\/|\/([\w#!:.?+=&%@!\-\/]))?/gi;
+            var last = 0;
+            var txt = "";
+            while (true) {
+                var result = url_regex.exec(str);
+                if (! result)
+                    break;
+                txt += _.escape(str.slice(last, result.index));
+                last = url_regex.lastIndex;
+                var url = _.escape(result[0]);
+                txt += '<a href="' + url + '" target="_blank">' + url + '</a>';
+            }
+            txt += _.escape(str.slice(last, str.length));
+            return txt;
+        },
         _add_bubble: function(user, item, date) {
             var items = [item];
             if (user === this.last_user) {
@@ -249,9 +260,9 @@
                 return new Array(size - str.length + 1).join('0') + str;
             };
             date = "" + zpad(date.getHours(), 2) + ":" + zpad(date.getMinutes(), 2);
-            var to_show = _.map(items, im_common.escape_keep_url);
-            this.last_bubble = $(openerp.qweb.render("im_common.conversation_bubble", {"items": to_show, "user": user, "time": date}));
-            $(this.$(".oe_im_chatview_conversation")).append(this.last_bubble);
+            var to_show = _.map(items, this.escape_keep_url);
+            this.last_bubble = $(openerp.qweb.render("im.Conversation_bubble", {"items": to_show, "user": user, "time": date}));
+            this.$(".oe_im_chatview_content").append(this.last_bubble);
             this._go_bottom();
         },
         _go_bottom: function() {
