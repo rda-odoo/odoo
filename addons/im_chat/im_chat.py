@@ -35,8 +35,9 @@ class Controller(openerp.addons.im.im.Controller):
 
     @openerp.http.route('/im/init', type="json", auth="none")
     def init(self, uuids=None):
-        # TODO call get_messages()
-        pass
+        registry, cr, uid, context = request.registry, request.cr, request.session.uid, request.context
+        notifications = registry['im.message'].init_messages(cr, uid, uuids, context)
+        return notifications
 
     @openerp.http.route('/im/post', type="json", auth="none")
     def post(self, uuid, message_type, message_content):
@@ -155,20 +156,23 @@ class im_message(osv.Model):
         'type' : 'message',
     }
 
-    def get_messages(self, cr, uid, last=None, uuids=None, context=None):
-        """ get the unread messages."""
+    def init_messages(self, cr, uid, uuids=None, context=None):
+        """ get the last messages the session header to initiate the given sessions """
         notifications = []
 
-        domain = []
-        if uid:
-            domain = [('to_id.user_ids', 'in', (uid,))] + domain
-        else:
-            domain = [('to_id.uuid', 'in', uuids)] + domain
+        # we grab all the messages to built the first part of the history : don't need uid in the search
+        #domain = []
+        #if uid:
+        #    domain = [('to_id.user_ids', 'in', (uid,))] + domain
+        #else:
+        domain = [('to_id.uuid', 'in', uuids)]
 
         # TODO replace last by last 30min or something smarter (max 20 lines per sessions)
         #    last = last or user.im_last_received
         #if last:
         #    domain.append(('id','>',last))
+        limit_date = datetime.datetime.now() - datetime.timedelta(minutes=30)
+        domain = [('date', '<', limit_date.strftime('%Y-%m-%d %H:%M:%S'))] + domain
 
         mess_ids = self.search(cr, openerp.SUPERUSER_ID, domain, context=context, order='id asc')
         messages = self.browse(cr, openerp.SUPERUSER_ID, mess_ids, context=context)
@@ -185,11 +189,10 @@ class im_message(osv.Model):
             }
             sessions.add(m.to_id.uuid)
             notifications.append([m.to_id.uuid, data])
-            last = max(last, m.id)
 
-        for s_uuid in sessions:
-            session_info = self.pool.get('im.session').header_get(cr, uid, s_uuid, context=context)
-            notifications.insert(0,[s_uuid, session_info])
+        for s_id in sessions:
+            session_info = self.pool.get('im.session').session_info(cr, uid, s_id, context)
+            notifications.insert(0,[session_info["uuid"], session_info])
 
         #user = self.pool['res.users'].browse(cr, openerp.SUPERUSER_ID, uid, context=context)
         #if user:
@@ -220,12 +223,10 @@ class im_message(osv.Model):
                     if Session.add_user(cr, openerp.SUPERUSER_ID, session.id, user_id, context=context):
                         user_status = self.pool["res.users"].im_users_status(cr, openerp.SUPERUSER_ID, [user_id], context=context)
                         notifications.extend(user_status)
-                        notifications.append([uuid, data])
-            else:
-                # message type message
-                # save history
-                message_id = self.create(cr, openerp.SUPERUSER_ID, data, context=context)
-                notifications.append([uuid, data])
+        
+            # save history
+            message_id = self.create(cr, openerp.SUPERUSER_ID, data, context=context)
+            notifications.append([uuid, data])
             print "SEnd many", notifications
             bus.sendmany(notifications)
         return message_id
