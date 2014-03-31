@@ -46,19 +46,10 @@ class Controller(openerp.addons.im.im.Controller):
 
     @openerp.http.route('/im/image', type='http', auth="none")
     def image(self, uuid, user_id):
-        registry, cr = request.registry, request.cr
-
-        # default image
-        image_b64 = 'R0lGODlhAQABAIABAP///wAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='
-
+        registry, cr, context, uid = request.registry, request.cr, request.context, request.session.uid
         # get the session
         Session = registry.get("im.session")
-        session_ids = Session.search(cr, 1, [('uuid','=',uuid), ('user_ids','=',user_id)])
-        for s in Session.browse(cr, 1, session_ids, context=context):
-            # get the image of the user
-            u = registry.get("res.users").read(cr, 1, [user_id], ["image_small"])[0]
-            image_base64 = res["image_small"]
-
+        image_b64 = Session.get_image(cr, uid, uuid, user_id, context)
         # built the response
         image_data = base64.b64decode(image_b64)
         headers = [('Content-Type', 'image/png')]
@@ -136,6 +127,18 @@ class im_session(osv.Model):
             self.write(cr, uid, [session_id], {'user_ids': [(4, user_id)]}, context=context)
             return True
         return False
+
+    def get_image(self, cr, uid, uuid, user_id, context=None):
+        """ get the avatar of a user in the given session """
+        #default image
+        image_b64 = 'R0lGODlhAQABAIABAP///wAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='
+        # get the session
+        session_id = self.pool["im.session"].search(cr, openerp.SUPERUSER_ID, [('uuid','=',uuid), ('user_ids','in', [user_id])])
+        if session_id:
+            # get the image of the user
+            res = self.pool["res.users"].read(cr, openerp.SUPERUSER_ID, [user_id], ["image_small"])[0]
+            image_b64 = res["image_small"]
+        return image_b64
 
 class im_message(osv.Model):
     _name = 'im.message'

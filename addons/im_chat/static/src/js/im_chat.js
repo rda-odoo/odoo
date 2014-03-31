@@ -261,7 +261,8 @@
             };
             date = "" + zpad(date.getHours(), 2) + ":" + zpad(date.getMinutes(), 2);
             var to_show = _.map(items, this.escape_keep_url);
-            this.last_bubble = $(openerp.qweb.render("im.Conversation_bubble", {"items": to_show, "user": user, "time": date}));
+            var img = openerp.session.url('/im/image', {uuid: this.session.uuid, user_id: user});
+            this.last_bubble = $(openerp.qweb.render("im.Conversation_bubble", {"items": to_show, "user": user, "time": date, 'avatar_url': img}));
             this.$(".oe_im_chatview_content").append(this.last_bubble);
             this._go_bottom();
         },
