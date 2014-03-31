@@ -75,22 +75,26 @@ class im_session(osv.Model):
 
     _rec_name = 'uuid'
 
-    # TODO transform in function field 'header'
-    def _get_fullname(self, cr, uid, ids, fields, context={}):
+    def _get_fullname(self, cr, uid, ids, fields, arg, context={}):
         """ built the header of a given session """
-        name = []
-        if (uid is not None) and session.name:
-            name.append(session.name)
-        for u in session.user_ids:
-            if u.id != uid:
-                name.append(u.name)
+        result = {}
+        sessions = self.pool["im.session"].browse(cr, uid, ids, context=context)
+        for session in sessions:
+            name = []
+            if (uid is not None) and session.name:
+                name.append(session.name)
+            for u in session.user_ids:
+                if u.id != uid:
+                    name.append(u.name)
+            result[session.id] = ', '.join(name)
+        return result
 
     _columns = {
         'uuid': fields.char('UUID', size=50, select=True),
         'name' : fields.char('Name'),
         'message_ids': fields.one2many('im.message', 'to_id', 'Messages'),
         'user_ids': fields.many2many('res.users'),
-        #'fullname' : fields.function(_get_header),
+        'fullname' : fields.function(_get_fullname, type="string"),
     }
     _defaults = {
         'uuid': lambda *args: '%s' % uuid.uuid4(),
@@ -107,7 +111,7 @@ class im_session(osv.Model):
         users_infos = self.pool["res.users"].im_users_status(cr, 1, [u.id for u in session.user_ids], context=context)
         return {
             'uuid': session.uuid,
-            'name': session.name,
+            'name': session.fullname,
             'users' : users_infos
         }
 
