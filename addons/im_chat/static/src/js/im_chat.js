@@ -60,9 +60,12 @@
             var self = this;
             var channel = notification[0];
             var message = notification[1];
-            console.log("on_notification", channel, message);
+            console.log("on_notification", channel, JSON.stringify(message));
             if (message.type == "message") {
                 self.received_message(channel, message);
+            }
+            if(message.uuid){
+                self.activate_session(message, true);
             }
         },
 
@@ -426,6 +429,7 @@
             return sessions.call("session_get", [user.id]).then(function(session) {
                self.c_manager.activate_session(session, true);
             });
+            
         },
         update_users_status: function(users_list){
             _.each(users_list, function(el) {

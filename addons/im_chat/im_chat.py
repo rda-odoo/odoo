@@ -30,7 +30,9 @@ class Controller(openerp.addons.im.im.Controller):
             #TODO: signal presence with a special cr
             #registry.get('res.users').im_connect(cr, uid, context=context)
             # listen to connection and disconnections
-            channels.append((request.db,'users'))
+            channels.append((request.db,'im_chat.presence'))
+            # channel to open a new session with me
+            channels.append((request.db, 'im_chat.session', request.session.uid))
         return super(Controller, self)._poll(channels)
 
     @openerp.http.route('/im/init', type="json", auth="none")
@@ -119,13 +121,23 @@ class im_session(osv.Model):
                     break
             else:
                 session_id = self.create(cr, uid, { 'user_ids': [(6,0, (user_to, uid))] }, context=context)
-        return self.session_info(cr, uid, session_id, context=context)
+        infos = self.session_info(cr, uid, session_id, context=context)
+        # notify the user_to a new session has been started
+        # TODO : with anonymous session, can't braodcast to unknown user
+        notifications = []
+        notifications.append([(cr.dbname, 'im_chat.session', user_to), infos])
+        notifications.append([(cr.dbname, 'im_chat.session', uid), infos])
+        bus.sendmany(notifications)
+        return infos
 
     def add_user(self, cr, uid, session_id, user_id, context=None):
         """ add the given user to the given session """
         session = self.browse(cr, uid, session_id, context=context)
         if user_id not in [u.id for u in session.user_ids]:
             self.write(cr, uid, [session_id], {'user_ids': [(4, user_id)]}, context=context)
+            # notify the added user
+            infos = self.session_info(cr, uid, session_id, context=context)
+            bus.sendone((cr.dbname, 'im_chat.session', user_id), infos)
             return True
         return False
 
@@ -231,7 +243,9 @@ class im_message(osv.Model):
             bus.sendmany(notifications)
         return message_id
 
+
 # TODO jerome res.users is not yet refactored
+# if im_status = functional field : error about the lock of the user table.
 
 def is_connected(im_status):
     dt = (datetime.datetime.now() - datetime.timedelta(0, DISCONNECTION_TIMER)).strftime('%Y-%m-%d %H:%M:%S')
@@ -243,11 +257,9 @@ class res_users(osv.Model):
 
     _columns = {
         'im_status': fields.datetime(string="IM Latest Connection"),
-        'im_last_received': fields.integer('Last IM Message Received'),
     }
     _defaults = {
         'im_status': False,
-        'im_last_received': False,
     }
 
     def __init__(self, pool, cr):
@@ -269,15 +281,13 @@ class res_users(osv.Model):
         user = self.browse(cr, uid, uid, context=context)
         if user:
             if not is_connected(user.im_status):
-                notify_channel(cr, "im_channel", {'type': 'status', 'user': user.id})
-            self.write(cr, openerp.SUPERUSER_ID, [uid], {'im_status': time.strftime('%Y-%m-%d %H:%M:%S')}, context=context)
-            cr.commit()
+                self.write(cr, openerp.SUPERUSER_ID, [uid], {'im_status': time.strftime('%Y-%m-%d %H:%M:%S')}, context=context)
+                bus.sendone((request.db,'im_chat.presence'), [user.id, True])
         return True
 
     def im_disconnect(self, cr, uid, context=None):
         self.write(cr, openerp.SUPERUSER_ID, [uid], {'im_status': False}, context=context)
-        cr.commit()
-        notify_channel(cr, "im_channel", {'type': 'status', 'user': uid})
+        bus.sendone((request.db,'im_chat.presence'), [uid, False])
         return True
 
     def im_search(self, cr, uid, name, limit, context=None):
