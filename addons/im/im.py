@@ -50,6 +50,9 @@ class Bus(object):
 
         event = self.Event()
         for c in channels:
+            # tuple(c) if not string
+            if not isinstance(c, basestring):
+                c = tuple(c)
             self.channels.setdefault(c, []).append(event)
         r = []
         try:
@@ -82,7 +85,11 @@ class Bus(object):
                     # dispatch to local threads/greenlets
                     events = set()
                     for n in notifications:
-                        events.update(self.channels.pop(n[0],[]))
+                        # tuple n[0] if not string
+                        c = n[0]
+                        if not isinstance(n[0], basestring):
+                            c = tuple(n[0])
+                        events.update(self.channels.pop(c,[]))
                     for e in events:
                         e.notifications = notifications
                         e.set()
