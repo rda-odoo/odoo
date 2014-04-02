@@ -14,7 +14,7 @@ from openerp.http import request
 _logger = logging.getLogger(__name__)
 
 TIMEOUT = 50
-TIMEOUT = 5
+TIMEOUT = 15
 
 """
 openerp.jsonRpc('/longpolling/poll','call',{"channels":["c1"]}).then(function(r){console.log(r)});
@@ -50,12 +50,15 @@ class Bus(object):
 
         event = self.Event()
         for c in channels:
+            if not isinstance(c, basestring):
+                c = tuple(c)
             self.channels.setdefault(c, []).append(event)
         r = []
         try:
             event.wait(timeout=timeout)
             notifications = event.notifications
-            r = [n for n in notifications if n[0] in channels]
+            # the OR is needed for channel string and tuple (if only tuple, string channel are not taken into account)
+            r = [n for n in notifications if (tuple(n[0]) in channels) or (n[0] in channels)]
         except Exception:
             # timeout
             pass
@@ -82,7 +85,10 @@ class Bus(object):
                     # dispatch to local threads/greenlets
                     events = set()
                     for n in notifications:
-                        events.update(self.channels.pop(n[0],[]))
+                        c = n[0]
+                        if not isinstance(c, basestring):
+                            c = tuple(n[0])
+                        events.update(self.channels.pop(c,[]))
                     for e in events:
                         e.notifications = notifications
                         e.set()

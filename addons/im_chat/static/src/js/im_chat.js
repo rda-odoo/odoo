@@ -60,9 +60,12 @@
             var self = this;
             var channel = notification[0];
             var message = notification[1];
-            console.log("on_notification", channel, message);
+            console.log("on_notification", channel, JSON.stringify(message));
             if (message.type == "message") {
                 self.received_message(channel, message);
+            }
+            if(message.uuid){
+                self.activate_session(message, true);
             }
         },
 
@@ -261,7 +264,8 @@
             };
             date = "" + zpad(date.getHours(), 2) + ":" + zpad(date.getMinutes(), 2);
             var to_show = _.map(items, this.escape_keep_url);
-            this.last_bubble = $(openerp.qweb.render("im.Conversation_bubble", {"items": to_show, "user": user, "time": date}));
+            var img = openerp.session.url('/im/image', {uuid: this.session.uuid, user_id: user});
+            this.last_bubble = $(openerp.qweb.render("im.Conversation_bubble", {"items": to_show, "user": user, "time": date, 'avatar_url': img}));
             this.$(".oe_im_chatview_content").append(this.last_bubble);
             this._go_bottom();
         },
@@ -425,6 +429,7 @@
             return sessions.call("session_get", [user.id]).then(function(session) {
                self.c_manager.activate_session(session, true);
             });
+            
         },
         update_users_status: function(users_list){
             _.each(users_list, function(el) {

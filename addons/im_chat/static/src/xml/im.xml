@@ -4,7 +4,7 @@
 <templates xml:space="preserve">
 <t t-name="im.Conversation">
     <div class="oe_im_chatview_header">
-        <span class="oe_im_chatview_header_name"></span>
+        <span class="oe_im_chatview_header_name"><t t-esc="widget.session.name"/></span>
         <span class="oe_im_chatview_nbr_messages"/>
         <span class="oe_im_chatview_right">
             <button class="oe_im_chatview_cogs" data-toggle="tooltip" data-placement="top" title="Start Recording"><i class="fa fa-video-camera"> </i></button>

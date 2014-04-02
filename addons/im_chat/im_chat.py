@@ -30,13 +30,16 @@ class Controller(openerp.addons.im.im.Controller):
             #TODO: signal presence with a special cr
             #registry.get('res.users').im_connect(cr, uid, context=context)
             # listen to connection and disconnections
-            channels.append((request.db,'users'))
+            channels.append((request.db,'im_chat.presence'))
+            # channel to open a new session with me
+            channels.append((request.db, 'im_chat.session', request.session.uid))
         return super(Controller, self)._poll(channels)
 
     @openerp.http.route('/im/init', type="json", auth="none")
     def init(self, uuids=None):
-        # TODO call get_messages()
-        pass
+        registry, cr, uid, context = request.registry, request.cr, request.session.uid, request.context
+        notifications = registry['im.message'].init_messages(cr, uid, uuids, context)
+        return notifications
 
     @openerp.http.route('/im/post', type="json", auth="none")
     def post(self, uuid, message_type, message_content):
@@ -46,19 +49,10 @@ class Controller(openerp.addons.im.im.Controller):
 
     @openerp.http.route('/im/image', type='http', auth="none")
     def image(self, uuid, user_id):
-        registry, cr = request.registry, request.cr
-
-        # default image
-        image_b64 = 'R0lGODlhAQABAIABAP///wAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='
-
+        registry, cr, context, uid = request.registry, request.cr, request.context, request.session.uid
         # get the session
         Session = registry.get("im.session")
-        session_ids = Session.search(cr, 1, [('uuid','=',uuid), ('user_ids','=',user_id)])
-        for s in Session.browse(cr, 1, session_ids, context=context):
-            # get the image of the user
-            u = registry.get("res.users").read(cr, 1, [user_id], ["image_small"])[0]
-            image_base64 = res["image_small"]
-
+        image_b64 = Session.get_image(cr, uid, uuid, user_id, context)
         # built the response
         image_data = base64.b64decode(image_b64)
         headers = [('Content-Type', 'image/png')]
@@ -75,22 +69,26 @@ class im_session(osv.Model):
 
     _rec_name = 'uuid'
 
-    # TODO transform in function field 'header'
-    def _get_fullname(self, cr, uid, ids, fields, context={}):
+    def _get_fullname(self, cr, uid, ids, fields, arg, context={}):
         """ built the header of a given session """
-        name = []
-        if (uid is not None) and session.name:
-            name.append(session.name)
-        for u in session.user_ids:
-            if u.id != uid:
-                name.append(u.name)
+        result = {}
+        sessions = self.pool["im.session"].browse(cr, uid, ids, context=context)
+        for session in sessions:
+            name = []
+            if (uid is not None) and session.name:
+                name.append(session.name)
+            for u in session.user_ids:
+                if u.id != uid:
+                    name.append(u.name)
+            result[session.id] = ', '.join(name)
+        return result
 
     _columns = {
         'uuid': fields.char('UUID', size=50, select=True),
         'name' : fields.char('Name'),
         'message_ids': fields.one2many('im.message', 'to_id', 'Messages'),
         'user_ids': fields.many2many('res.users'),
-        #'fullname' : fields.function(_get_header),
+        'fullname' : fields.function(_get_fullname, type="string"),
     }
     _defaults = {
         'uuid': lambda *args: '%s' % uuid.uuid4(),
@@ -107,7 +105,7 @@ class im_session(osv.Model):
         users_infos = self.pool["res.users"].im_users_status(cr, 1, [u.id for u in session.user_ids], context=context)
         return {
             'uuid': session.uuid,
-            'name': session.name,
+            'name': session.fullname,
             'users' : users_infos
         }
 
@@ -123,15 +121,37 @@ class im_session(osv.Model):
                     break
             else:
                 session_id = self.create(cr, uid, { 'user_ids': [(6,0, (user_to, uid))] }, context=context)
-        return self.session_info(cr, uid, session_id, context=context)
+        infos = self.session_info(cr, uid, session_id, context=context)
+        # notify the user_to a new session has been started
+        # TODO : with anonymous session, can't braodcast to unknown user
+        notifications = []
+        notifications.append([(cr.dbname, 'im_chat.session', user_to), infos])
+        notifications.append([(cr.dbname, 'im_chat.session', uid), infos])
+        bus.sendmany(notifications)
+        return infos
 
     def add_user(self, cr, uid, session_id, user_id, context=None):
         """ add the given user to the given session """
         session = self.browse(cr, uid, session_id, context=context)
         if user_id not in [u.id for u in session.user_ids]:
             self.write(cr, uid, [session_id], {'user_ids': [(4, user_id)]}, context=context)
+            # notify the added user
+            infos = self.session_info(cr, uid, session_id, context=context)
+            bus.sendone((cr.dbname, 'im_chat.session', user_id), infos)
             return True
         return False
+
+    def get_image(self, cr, uid, uuid, user_id, context=None):
+        """ get the avatar of a user in the given session """
+        #default image
+        image_b64 = 'R0lGODlhAQABAIABAP///wAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='
+        # get the session
+        session_id = self.pool["im.session"].search(cr, openerp.SUPERUSER_ID, [('uuid','=',uuid), ('user_ids','in', [user_id])])
+        if session_id:
+            # get the image of the user
+            res = self.pool["res.users"].read(cr, openerp.SUPERUSER_ID, [user_id], ["image_small"])[0]
+            image_b64 = res["image_small"]
+        return image_b64
 
 class im_message(osv.Model):
     _name = 'im.message'
@@ -148,20 +168,23 @@ class im_message(osv.Model):
         'type' : 'message',
     }
 
-    def get_messages(self, cr, uid, last=None, uuids=None, context=None):
-        """ get the unread messages."""
+    def init_messages(self, cr, uid, uuids=None, context=None):
+        """ get the last messages the session header to initiate the given sessions """
         notifications = []
 
-        domain = []
-        if uid:
-            domain = [('to_id.user_ids', 'in', (uid,))] + domain
-        else:
-            domain = [('to_id.uuid', 'in', uuids)] + domain
+        # we grab all the messages to built the first part of the history : don't need uid in the search
+        #domain = []
+        #if uid:
+        #    domain = [('to_id.user_ids', 'in', (uid,))] + domain
+        #else:
+        domain = [('to_id.uuid', 'in', uuids)]
 
         # TODO replace last by last 30min or something smarter (max 20 lines per sessions)
         #    last = last or user.im_last_received
         #if last:
         #    domain.append(('id','>',last))
+        limit_date = datetime.datetime.now() - datetime.timedelta(minutes=30)
+        domain = [('date', '<', limit_date.strftime('%Y-%m-%d %H:%M:%S'))] + domain
 
         mess_ids = self.search(cr, openerp.SUPERUSER_ID, domain, context=context, order='id asc')
         messages = self.browse(cr, openerp.SUPERUSER_ID, mess_ids, context=context)
@@ -178,11 +201,10 @@ class im_message(osv.Model):
             }
             sessions.add(m.to_id.uuid)
             notifications.append([m.to_id.uuid, data])
-            last = max(last, m.id)
 
-        for s_uuid in sessions:
-            session_info = self.pool.get('im.session').header_get(cr, uid, s_uuid, context=context)
-            notifications.insert(0,[s_uuid, session_info])
+        for s_id in sessions:
+            session_info = self.pool.get('im.session').session_info(cr, uid, s_id, context)
+            notifications.insert(0,[session_info["uuid"], session_info])
 
         #user = self.pool['res.users'].browse(cr, openerp.SUPERUSER_ID, uid, context=context)
         #if user:
@@ -213,17 +235,17 @@ class im_message(osv.Model):
                     if Session.add_user(cr, openerp.SUPERUSER_ID, session.id, user_id, context=context):
                         user_status = self.pool["res.users"].im_users_status(cr, openerp.SUPERUSER_ID, [user_id], context=context)
                         notifications.extend(user_status)
-                        notifications.append([uuid, data])
-            else:
-                # message type message
-                # save history
-                message_id = self.create(cr, openerp.SUPERUSER_ID, data, context=context)
-                notifications.append([uuid, data])
+        
+            # save history
+            message_id = self.create(cr, openerp.SUPERUSER_ID, data, context=context)
+            notifications.append([uuid, data])
             print "SEnd many", notifications
             bus.sendmany(notifications)
         return message_id
 
+
 # TODO jerome res.users is not yet refactored
+# if im_status = functional field : error about the lock of the user table.
 
 def is_connected(im_status):
     dt = (datetime.datetime.now() - datetime.timedelta(0, DISCONNECTION_TIMER)).strftime('%Y-%m-%d %H:%M:%S')
@@ -235,11 +257,9 @@ class res_users(osv.Model):
 
     _columns = {
         'im_status': fields.datetime(string="IM Latest Connection"),
-        'im_last_received': fields.integer('Last IM Message Received'),
     }
     _defaults = {
         'im_status': False,
-        'im_last_received': False,
     }
 
     def __init__(self, pool, cr):
@@ -261,15 +281,13 @@ class res_users(osv.Model):
         user = self.browse(cr, uid, uid, context=context)
         if user:
             if not is_connected(user.im_status):
-                notify_channel(cr, "im_channel", {'type': 'status', 'user': user.id})
-            self.write(cr, openerp.SUPERUSER_ID, [uid], {'im_status': time.strftime('%Y-%m-%d %H:%M:%S')}, context=context)
-            cr.commit()
+                self.write(cr, openerp.SUPERUSER_ID, [uid], {'im_status': time.strftime('%Y-%m-%d %H:%M:%S')}, context=context)
+                bus.sendone((request.db,'im_chat.presence'), [user.id, True])
         return True
 
     def im_disconnect(self, cr, uid, context=None):
         self.write(cr, openerp.SUPERUSER_ID, [uid], {'im_status': False}, context=context)
-        cr.commit()
-        notify_channel(cr, "im_channel", {'type': 'status', 'user': uid})
+        bus.sendone((request.db,'im_chat.presence'), [uid, False])
         return True
 
     def im_search(self, cr, uid, name, limit, context=None):
