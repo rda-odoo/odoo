@@ -28,9 +28,18 @@ openerp.jsonRpc('/longpolling/send','call',{"channel":"c2","message":"m2"}).then
 class Bus(object):
     def __init__(self):
         self.channels = {}
+        self.notifications = []
+
+    def hashable(self, key):
+        if isinstance(key, list):
+            key = tuple(key)
+        return key
 
     def sendmany(self, notifications):
         if notifications:
+            # prepend ts
+            ts = time.time()
+            notifications = [(ts, self.hashable(channel), message) for channel, message in notifications]
             cr = openerp.sql_db.db_connect('postgres').cursor()
             cr.execute("notify imbus, %s", (json.dumps(notifications),))
             cr.commit()
@@ -39,30 +48,47 @@ class Bus(object):
     def sendone(self, channel, message):
         self.sendmany([[channel, message]])
 
-    def poll(self, channels, timeout=TIMEOUT):
+    def poll(self, channels, last, timeout=TIMEOUT):
         # Dont hang ctrl-c for a poll request, we need to bypass private
         # attribute access because we dont know before starting the thread that
         # it will handle a longpolling request
         if not openerp.evented:
             threading.current_thread()._Thread__daemonic = True
 
-        print "Bus.poll", threading.current_thread(), channels
+        channels = [self.hashable(c) for c in channels]
 
+        # immediatly returns if past notifications exist
+        r = [n for n in self.notifications if n[0] > last and n[1] in channels]
+        if r:
+            return r
+
+        # or wait for future ones
         event = self.Event()
         for c in channels:
-            if not isinstance(c, basestring):
-                c = tuple(c)
-            self.channels.setdefault(c, []).append(event)
-        r = []
+            self.channels.setdefault(self.hashable(c), []).append(event)
         try:
+            print "Bus.poll", threading.current_thread(), channels
             event.wait(timeout=timeout)
             notifications = event.notifications
-            # the OR is needed for channel string and tuple (if only tuple, string channel are not taken into account)
-            r = [n for n in notifications if (tuple(n[0]) in channels) or (n[0] in channels)]
+            r = [n for n in notifications if n[1] in channels]
         except Exception:
             # timeout
             pass
         return r
+
+    def dispatch(self, notifications):
+        # gc and queue
+        ts = notifications[0][0]
+        self.notifications = [n for n in self.notifications if n[0] > ts - TIMEOUT] + notifications
+        print self.notifications
+        # dispatch to local threads/greenlets
+        events = set()
+        for n in notifications:
+            c = self.hashable(n[1])
+            events.update(self.channels.pop(c,[]))
+        for e in events:
+            e.notifications = notifications
+            e.set()
 
     def loop(self):
         """ Dispatch postgres notifications to the relevant polling threads/greenlets """
@@ -76,22 +102,11 @@ class Bus(object):
                 if select.select([conn], [], [], TIMEOUT) == ([],[],[]):
                     pass
                 else:
-                    # retreive from postgres
                     conn.poll()
                     notifications=[]
                     while conn.notifies:
                         notifications.extend(json.loads(conn.notifies.pop().payload))
-
-                    # dispatch to local threads/greenlets
-                    events = set()
-                    for n in notifications:
-                        c = n[0]
-                        if not isinstance(c, basestring):
-                            c = tuple(n[0])
-                        events.update(self.channels.pop(c,[]))
-                    for e in events:
-                        e.notifications = notifications
-                        e.set()
+                    self.dispatch(notifications)
         finally:
             cr.close()
 
@@ -105,7 +120,7 @@ class Bus(object):
 
     def start(self):
         if openerp.multi_process:
-            # disabled prefork mode
+            # disabled in prefork mode
             return
         elif openerp.evented:
             # gevent mode
@@ -132,15 +147,15 @@ class Controller(openerp.http.Controller):
         return bus.sendone(channel, message)
 
     # override to add channels
-    def _poll(self, channels):
-        return bus.poll(channels)
+    def _poll(self, channels, last):
+        return bus.poll(channels, last)
 
     @openerp.http.route('/longpolling/poll', type="json", auth="none")
-    def poll(self, channels):
+    def poll(self, channels, last):
         if not bus:
             raise Exception("im.Bus unavailable")
         if [c for c in channels if not isinstance(c, basestring)]:
             raise Exception("im.Bus only string channels are allowed.")
-        return self._poll(channels)
+        return self._poll(channels, last)
 
 # vim:et:

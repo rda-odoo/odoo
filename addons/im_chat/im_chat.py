@@ -25,7 +25,7 @@ DISCONNECTION_TIMER = TIMEOUT + 5
 #----------------------------------------------------------
 
 class Controller(openerp.addons.im.im.Controller):
-    def _poll(self, channels):
+    def _poll(self, channels, last):
         if request.session.uid:
             #TODO: signal presence with a special cr
             #registry.get('res.users').im_connect(cr, uid, context=context)
@@ -33,7 +33,7 @@ class Controller(openerp.addons.im.im.Controller):
             channels.append((request.db,'im_chat.presence'))
             # channel to open a new session with me
             channels.append((request.db, 'im_chat.session', request.session.uid))
-        return super(Controller, self)._poll(channels)
+        return super(Controller, self)._poll(channels, last)
 
     @openerp.http.route('/im/init', type="json", auth="none")
     def init(self, uuids=None):
@@ -235,7 +235,7 @@ class im_message(osv.Model):
                     if Session.add_user(cr, openerp.SUPERUSER_ID, session.id, user_id, context=context):
                         user_status = self.pool["res.users"].im_users_status(cr, openerp.SUPERUSER_ID, [user_id], context=context)
                         notifications.extend(user_status)
-        
+
             # save history
             message_id = self.create(cr, openerp.SUPERUSER_ID, data, context=context)
             notifications.append([uuid, data])

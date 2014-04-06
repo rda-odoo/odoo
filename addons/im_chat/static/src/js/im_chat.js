@@ -23,6 +23,7 @@
             // business
             this.activated = true;
             this.sessions = {};
+            this.last = 0;
 
             // ui
             this.set("right_offset", 0);
@@ -43,7 +44,7 @@
         poll: function() {
             var self = this;
             self.activated = true;
-            var data = {'channels': _.keys(self.sessions)};
+            var data = {'channels': _.keys(self.sessions), 'last': self.last};
             console.log('poll',data);
             openerp.session.rpc("/longpolling/poll", data, {shadow: true}).then(function(result) {
                 console.log('poll result', result);
@@ -56,11 +57,14 @@
             });
         },
         on_notification: function(notification) {
-
             var self = this;
-            var channel = notification[0];
-            var message = notification[1];
-            console.log("on_notification", channel, JSON.stringify(message));
+            var ts = notification[0];
+            var channel = notification[1];
+            var message = notification[2];
+            console.log("on_notification",ts, channel, JSON.stringify(message));
+            if (ts > this.last) {
+                this.last = ts;
+            }
             if (message.type == "message") {
                 self.received_message(channel, message);
             }
