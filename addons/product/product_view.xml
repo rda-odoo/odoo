@@ -118,6 +118,7 @@
                                         </div>
                                         <field name="company_id" groups="base.group_multi_company" widget="selection"
                                             attrs="{'invisible': [('is_only_child', '=', False)]}"/>
+                                        <field name="active" />
                                     </group>
                                 </group>
                                 <field name="description" placeholder="describe the product characteristics..."
@@ -584,10 +585,12 @@
             <field name="model">product.ul</field>
             <field name="arch" type="xml">
                 <form string="Packaging" version="7.0">
+                    <sheet>
                     <group>
                         <field name="name"/>
                         <field name="type"/>
                     </group>
+                    </sheet>
                 </form>
             </field>
         </record>
