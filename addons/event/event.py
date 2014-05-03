@@ -131,7 +131,7 @@ class event_event(osv.osv):
         @return: Dictionary of function field values.
         """
         event_ids=set()
-        for registration in self.browse(cr, uid, ids, context=context):
+        for registration in self.pool['event.registration'].browse(cr, uid, ids, context=context):
             event_ids.add(registration.event_id.id)
         return list(event_ids)
 
@@ -148,6 +148,17 @@ class event_event(osv.osv):
                     if reg.state in ('open','done'):
                         res[event.id]= True
                         continue
+        return res
+    
+    def _count_all(self, cr, uid, ids, field_name, arg, context=None):
+        res = dict(map(lambda x: (x,{'count_registrations': 0, 'count_tracks': 0,}), ids))
+        try:
+            for data in self.browse(cr, uid, ids, context=context):
+                res[data.id] = {'count_registrations': len(data.registration_ids),
+                'count_tracks': len(data.track_ids),
+               }
+        except:
+            pass
         return res
 
     _columns = {
@@ -169,6 +180,7 @@ class event_event(osv.osv):
             store={'event.registration': (_get_events_from_registrations, ['state'], 10),
                    'event.event': (lambda  self, cr, uid, ids, c = {}: ids, ['seats_max', 'registration_ids'], 20)}),
         'registration_ids': fields.one2many('event.registration', 'event_id', 'Registrations', readonly=False, states={'done': [('readonly', True)]}),
+        'track_ids': fields.one2many('event.track', 'event_id', 'Tracks', readonly=False),
         'date_begin': fields.datetime('Start Date', required=True, readonly=True, states={'draft': [('readonly', False)]}),
         'date_end': fields.datetime('End Date', required=True, readonly=True, states={'draft': [('readonly', False)]}),
         'state': fields.selection([
@@ -191,6 +203,8 @@ class event_event(osv.osv):
         'company_id': fields.many2one('res.company', 'Company', required=False, change_default=True, readonly=False, states={'done': [('readonly', True)]}),
         'is_subscribed' : fields.function(_subscribe_fnc, type="boolean", string='Subscribed'),
         'organizer_id': fields.many2one('res.partner', "Organizer"),
+        'count_registrations': fields.function(_count_all, type="integer", string="Registrations", multi=True),
+        'count_tracks': fields.function(_count_all, type='integer', string='Tracks', multi=True),
     }
     _defaults = {
         'state': 'draft',
@@ -317,6 +331,7 @@ class event_registration(osv.osv):
     def confirm_registration(self, cr, uid, ids, context=None):
         for reg in self.browse(cr, uid, ids, context=context or {}):
             self.pool.get('event.event').message_post(cr, uid, [reg.event_id.id], body=_('New registration confirmed: %s.') % (reg.name or '', ),subtype="event.mt_event_registration", context=context)
+            self.message_post(cr, uid, reg.id, body=_('Event Registration confirmed.'), context=context)
         return self.write(cr, uid, ids, {'state': 'open'}, context=context)
 
     def registration_open(self, cr, uid, ids, context=None):
