@@ -24,11 +24,11 @@ import random
 import jinja2
 
 import openerp
-import openerp.addons.im.im as im
+import openerp.addons.im_chat.im_chat
 from openerp.osv import osv, fields
 from openerp import tools
 from openerp import http
-from openerp.http import request
+
 
 env = jinja2.Environment(
     loader=jinja2.PackageLoader('openerp.addons.im_livechat', "."),
@@ -43,23 +43,22 @@ class LiveChatController(http.Controller):
         uid = request.uid
         return reg, uid
 
-    @http.route('/im_livechat/loader', auth="public")
+    @http.route('/im_livechat/loader', auth="none")
     def loader(self, **kwargs):
         p = json.loads(kwargs["p"])
         db = p["db"]
         channel = p["channel"]
-        user_name = p.get("user_name", None)
-
+        user_name = p.get("user_name", "Visitor")
         reg, uid = self._auth(db)
         with reg.cursor() as cr:
             info = reg.get('im_livechat.channel').get_info_for_chat_src(cr, uid, channel)
             info["db"] = db
             info["channel"] = channel
-            info["userName"] = user_name
+            info["username"] = user_name
             return request.make_response(env.get_template("loader.js").render(info),
                  headers=[('Content-Type', "text/javascript")])
 
-    @http.route('/im_livechat/web_page', auth="public")
+    @http.route('/im_livechat/web_page', auth="none")
     def web_page(self, **kwargs):
         p = json.loads(kwargs["p"])
         db = p["db"]
@@ -69,16 +68,35 @@ class LiveChatController(http.Controller):
             script = reg.get('im_livechat.channel').read(cr, uid, channel, ["script"])["script"]
             info = reg.get('im_livechat.channel').get_info_for_chat_src(cr, uid, channel)
             info["script"] = script
-            return request.make_response(env.get_template("web_page.html").render(info),
-                 headers=[('Content-Type', "text/html")])
+            return request.make_response(env.get_template("web_page.html").render(info), 
+                headers=[('Content-Type', "text/html")])
 
-    @http.route('/im_livechat/available', type='json', auth="public")
+    @http.route('/im_livechat/get_session', type="json", auth="none")
+    def get_session(self, channel_id, anonymous_name):
+        cr, uid, context, db = request.cr, request.uid, request.context, request.db
+        reg = openerp.modules.registry.RegistryManager.get(db)
+
+        # add the location to the anonymous name
+        ip = request.httprequest.environ['REMOTE_ADDR']
+        try:
+            import GeoIP
+            _geo_ip = GeoIP.open('/usr/share/GeoIP/GeoLiteCity.dat', GeoIP.GEOIP_STANDARD)
+            result = _geo_ip.record_by_addr(ip)
+            if result:
+                anonymous_name = anonymous_name + " ("+result["country_name"]+")"
+        except Exception:
+            pass
+            
+        session = reg.get("im_livechat.channel").get_channel_session(cr, uid, channel_id, anonymous_name, context=context)
+        return session
+
+    @http.route('/im_livechat/available', type='json', auth="none")
     def available(self, db, channel):
         reg, uid = self._auth(db)
         with reg.cursor() as cr:
             return len(reg.get('im_livechat.channel').get_available_users(cr, uid, channel)) > 0
 
-class im_livechat_channel(osv.osv):
+class im_livechat_channel(osv.Model):
     _name = 'im_livechat.channel'
 
     def _get_default_image(self, cr, uid, context=None):
@@ -91,7 +109,6 @@ class im_livechat_channel(osv.osv):
         return result
     def _set_image(self, cr, uid, id, name, value, args, context=None):
         return self.write(cr, uid, [id], {'image': tools.image_resize_image_big(value)}, context=context)
-
 
     def _are_you_inside(self, cr, uid, ids, name, arg, context=None):
         res = {}
@@ -161,24 +178,28 @@ class im_livechat_channel(osv.osv):
     }
 
     def get_available_users(self, cr, uid, channel_id, context=None):
+        """ get available user of a given channel """
         channel = self.browse(cr, openerp.SUPERUSER_ID, channel_id, context=context)
-        im_user_ids = self.pool.get("im.user").search(cr, uid, [["user_id", "in", [user.id for user in channel.user_ids]]], context=context)
         users = []
-        for iuid in im_user_ids:
-            imuser = self.pool.get("im.user").browse(cr, uid, iuid, context=context)
-            if imuser.im_status:
-                users.append(imuser)
+        for user_id in channel.user_ids:
+            #user = self.pool["res.users"].browse(cr, openerp.SUPERUSER_ID, user_id.id, context=context)
+            if (user_id.im_status == 'connected'):
+                users.append(user_id)
         return users
 
-    def get_session(self, cr, uid, channel_id, uuid, context=None):
-        self.pool.get("im.user").get_my_id(cr, uid, uuid, context=context)
+    def get_channel_session(self, cr, uid, channel_id, anonymous_name, context=None):
+        """ return a session given a channel : create on with a registered user, or return false otherwise """
+        # get the avalable user of the channel
         users = self.get_available_users(cr, openerp.SUPERUSER_ID, channel_id, context=context)
         if len(users) == 0:
             return False
         user_id = random.choice(users).id
-        session = self.pool.get("im.session").session_get(cr, uid, [user_id], uuid, context=context)
-        self.pool.get("im.session").write(cr, openerp.SUPERUSER_ID, session.get("id"), {'channel_id': channel_id}, context=context)
-        return session.get("id")
+        # create the session, and add the link with the given channel
+        Session = self.pool["im_chat.session"]
+        newid = Session.create(cr, openerp.SUPERUSER_ID, {'user_ids': [(4,user_id)], 'channel_id': channel_id, 'name' : anonymous_name}, context=context)
+        session = Session.browse(cr, openerp.SUPERUSER_ID, newid, context=context)
+        header = Session.session_info(cr, uid, session, context=context)
+        return header
 
     def test_channel(self, cr, uid, channel, context=None):
         if not channel:
@@ -207,8 +228,8 @@ class im_livechat_channel(osv.osv):
         self.write(cr, uid, ids, {'user_ids': [(3, uid)]})
         return True
 
-class im_session(osv.osv):
-    _inherit = 'im.session'
+class im_chat_session(osv.Model):
+    _inherit = 'im_chat.session'
 
     _columns = {
         'channel_id': fields.many2one("im_livechat.channel", "Channel"),

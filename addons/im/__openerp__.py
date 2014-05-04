@@ -5,5 +5,8 @@
     'category': 'Hidden',
     'complexity': 'easy',
     'description': "Instant Messaging bus",
-    'depends' : ['base'],
+    'depends': ['base', 'web'],
+    'data': [
+        'views/im.xml',
+    ],
 }

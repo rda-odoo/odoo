@@ -1,3 +1,5 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_im_message,im.message,model_im_message,base.group_user,1,0,1,0
-access_im_session,im.session,model_im_session,,1,1,1,0
+access_im_chat_message,im_chat.message,model_im_chat_message,base.group_user,1,0,1,0
+access_im_chat_session,im_chat.session,model_im_chat_session,,1,1,1,0
+access_im_chat_user_session_rel,im_chat.user_session_rel,model_im_chat_user_session_rel,,1,1,1,0
+access_im_chat_presence,im_chat.presence,model_im_chat_presence,,1,1,1,1

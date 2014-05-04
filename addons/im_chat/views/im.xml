@@ -5,9 +5,9 @@
     <data>
         <template id="assets_backend" name="im assets" inherit_id="web.assets_backend">
             <xpath expr="." position="inside">
-                <link rel="stylesheet" href="/im/static/src/css/im.css"/>
-                <link rel="stylesheet" href="/im/static/src/css/im_common.css"/>
-                <script type="text/javascript" src="/im/static/src/js/im_chat.js"></script>
+                <link rel="stylesheet" href="/im_chat/static/src/css/im_common.css"/>
+                <link rel="stylesheet" href="/im_chat/static/src/css/im_chat.css"/>
+                <script type="text/javascript" src="/im_chat/static/src/js/im_chat.js"></script>
             </xpath>
         </template>
     </data>
