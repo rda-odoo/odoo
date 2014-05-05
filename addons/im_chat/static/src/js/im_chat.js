@@ -215,7 +215,7 @@
         },
         update_fold_state: function(state){
             if(!this.options["anonymous_mode"]){
-                return new openerp.Model("im_chat.user_session_rel").call("update_state", [state, this.get("session").uuid]);
+                return new openerp.Model("im_chat.session_res_users_rel").call("update_state", [state, this.get("session").uuid]);
             }
         },
         calc_pos: function() {

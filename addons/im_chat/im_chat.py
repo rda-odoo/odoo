@@ -29,7 +29,7 @@ class Controller(openerp.addons.im.im.Controller):
             registry.get('im_chat.presence').update(cr, uid, ('im_presence' in options), context=context)
             cr.commit()
             # listen to connection and disconnections
-            channels.append((request.db,'im_chat.status'))
+            channels.append((request.db,'im_chat.presence'))
             # channel to receive message
             channels.append((request.db,'im_chat.session', request.session.uid))
         return super(Controller, self)._poll(dbname, channels, last, options)
@@ -63,7 +63,7 @@ class Controller(openerp.addons.im.im.Controller):
 #----------------------------------------------------------
 class im_chat_user_session_rel(osv.Model):
     """ Adds a state on the m2m between user and session.  """
-    _name = 'im_chat.user_session_rel'
+    _name = 'im_chat.session_res_users_rel'
     _columns = {
         "state" : fields.selection([('open', 'Open'), ('folded', 'Folded'), ('closed', 'Closed')]),
         "session_id" : fields.many2one('im_chat.session', 'Session', required=True, ondelete="cascade"),
@@ -72,11 +72,6 @@ class im_chat_user_session_rel(osv.Model):
     _defaults = {
         "state" : 'open'
     }
-
-    def update_state(self, cr, uid, uuid, state, context=None):
-        """ modify the fold_state of the given session """
-        session_ids = self.search(cr, uid, [('user_id','=',uid), ('session_id.uuid','=',uuid)], context=context)
-        self.write(cr, uid, session_ids, {'state': state}, context=context)
 
 class im_chat_session(osv.Model):
     """ Conversations."""
@@ -102,8 +97,8 @@ class im_chat_session(osv.Model):
         'uuid': fields.char('UUID', size=50, select=True),
         'name' : fields.char('Name'),
         'message_ids': fields.one2many('im_chat.message', 'to_id', 'Messages'),
-        'user_ids': fields.many2many('res.users', 'im_chat_user_session_rel', 'session_id', 'user_id', "Users of Session"),
-        'user_session_rel': fields.one2many('im_chat.user_session_rel', 'session_id', 'Relations User-Session'),
+        'user_ids': fields.many2many('res.users', 'im_chat_session_res_users_rel', 'session_id', 'user_id', "Session Users"),
+        'user_session_rel': fields.one2many('im_chat.session_res_users_rel', 'session_id', 'Relation Session Users'),
         'fullname' : fields.function(_get_fullname, type="string"),
     }
     _defaults = {
@@ -140,13 +135,21 @@ class im_chat_session(osv.Model):
                 session_id = self.create(cr, uid, { 'user_ids': [(6,0, (user_to, uid))] }, context=context)
         return self.session_info(cr, uid, [session_id], context=context)
 
+    def update_state(self, cr, uid, uuid, state, context=None):
+        """ modify the fold_state of the given session """
+        session_ids = self.pool['im_chat.session_res_users_rel'].search(cr, uid, [('user_id','=',uid), ('session_id.uuid','=',uuid)], context=context)
+        self.write(cr, uid, session_ids, {'state': state}, context=context)
+        info = session.session_info()
+        info['state'] = state
+        self.pool['im.bus'].sendone(cr, (cr.dbname, 'im_chat.session', uid), info)
+
     def add_user(self, cr, uid, ids, user_id, context=None):
         """ add the given user to the given session """
         for session in self.browse(cr, uid, session_id, context=context):
             if user_id not in [u.id for u in session.user_ids]:
                 self.write(cr, uid, [session_id], {'user_ids': [(4, user_id)]}, context=context)
                 # notify the added user
-                bus.sendone(cr, (cr.dbname, 'im_chat.session', user_id), session.session_info())
+                self.pool['im.bus'].sendone(cr, (cr.dbname, 'im_chat.session', uid), session.session_info())
                 bus.sendone(cr, session.uuid, session.session_info())
 
     def get_image(self, cr, uid, uuid, user_id, context=None):
@@ -283,8 +286,6 @@ class im_chat_presence(osv.Model):
         if old_status != status:
             self.pool['im.bus'].sendone(cr, uid, (cr.dbname,'im_chat.presence'), {'id': uid, 'status': status})
 
-
-
 class res_users(osv.Model):
     _inherit = "res.users"
 
@@ -305,6 +306,7 @@ class res_users(osv.Model):
         """ search users with a name and return its id, name and im_status """
         group_user_id = self.pool.get("ir.model.data").get_object_reference(cr, uid, 'base', 'group_user')[1]
         user_ids = self.name_search(cr, uid, name, [('id','!=', uid), ('groups_id', 'in', [group_user_id])], limit=limit, context=context)
+        # TODO make this work
         domain = [('user_id', 'in', [i[0] for i in user_ids])]
         domain = []
         ids = self.pool['im_chat.presence'].search(cr, uid, domain, order="last_poll desc", context=context)
@@ -313,8 +315,6 @@ class res_users(osv.Model):
             p['id'] = p['user_id'][0]
             p['name'] = p['user_id'][1]
 
-        print presences
         return presences
-
 
 # vim:et:
