@@ -52,7 +52,10 @@ class ImBus(osv.Model):
                 "message" : simplejson.dumps(message)
             }
             self.pool['im.bus'].create(cr, openerp.SUPERUSER_ID, values)
-            # TODO gc
+            # TODO gcstatus
+            #if random.random() < 0.001:
+            # ids self.search(cr, uid, [create_date < now-TIMEOUT*2])
+            # self.unlink(ids)
         if channels:
             with openerp.sql_db.db_connect('postgres').cursor() as cr2:
                 cr2.execute("notify imbus, %s", (json_dump(list(channels)),))
@@ -130,14 +133,14 @@ class ImDispatch(object):
                 time.sleep(TIMEOUT)
 
     def start(self):
-        if openerp.multi_process:
-            # disabled in prefork mode
-            return
-        elif openerp.evented:
+        if openerp.evented:
             # gevent mode
             import gevent
             self.Event = gevent.event.Event
             gevent.spawn(self.run)
+        elif openerp.multi_process:
+            # disabled in prefork mode
+            return
         else:
             # threaded mode
             self.Event = threading.Event
@@ -152,9 +155,10 @@ dispatch = ImDispatch().start()
 # Controller
 #----------------------------------------------------------
 class Controller(openerp.http.Controller):
-    # TODO: INSECURE TEST controller bypassing security REMOVE ME
     @openerp.http.route('/longpolling/send', type="json", auth="none")
     def send(self, channel, message):
+        if not isinstance(channel, basestring):
+            raise Exception("im.Bus only string channels are allowed.")
         registry, cr, uid, context = request.registry, request.cr, request.session.uid, request.context
         return registry['im.bus'].sendone(cr, uid, channel, message)
 

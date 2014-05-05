@@ -1,7 +1,7 @@
 (function() {
     var im = openerp.im = {};
 
-    im.ERROR_DELAY = 5000;
+    im.ERROR_DELAY = 30000;
 
     im.Bus = openerp.Widget.extend({
         init: function(){

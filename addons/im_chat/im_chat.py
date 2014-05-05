@@ -24,7 +24,6 @@ AWAY_TIMER = 600 # 10 minutes
 class Controller(openerp.addons.im.im.Controller):
     def _poll(self, dbname, channels, last, options):
         if request.session.uid:
-            # TODO only employee ?
             registry, cr, uid, context = request.registry, request.cr, request.session.uid, request.context
             registry.get('im_chat.presence').update(cr, uid, ('im_presence' in options), context=context)
             cr.commit()
@@ -148,9 +147,9 @@ class im_chat_session(osv.Model):
         for session in self.browse(cr, uid, session_id, context=context):
             if user_id not in [u.id for u in session.user_ids]:
                 self.write(cr, uid, [session_id], {'user_ids': [(4, user_id)]}, context=context)
-                # notify the added user
-                self.pool['im.bus'].sendone(cr, (cr.dbname, 'im_chat.session', uid), session.session_info())
-                bus.sendone(cr, session.uuid, session.session_info())
+                # notify the all the channel users
+                for channel_user_id in session.users_ids:
+                    self.pool['im.bus'].sendone(cr, (cr.dbname, 'im_chat.session', channer_user_id), session.session_info())
 
     def get_image(self, cr, uid, uuid, user_id, context=None):
         """ get the avatar of a user in the given session """
@@ -188,9 +187,7 @@ class im_chat_message(osv.Model):
         threshold = datetime.datetime.now() - datetime.timedelta(seconds=AWAY_TIMER)
         threshold = threshold.strftime(DEFAULT_SERVER_DATETIME_FORMAT)
 
-        # TODO right domain
-        #domain = [('to_id.users_ids', '=', uid), ('create_date','>',threshold)]
-        domain = []
+        domain = [('to_id.user_ids', 'in', [uid]), ('create_date','>',threshold)]
         message_ids = self.search(cr, uid, domain, context=context, order='id asc')
         messages = self.read(cr, uid, message_ids, ['from_id','to_id','create_date','type','message'], context=context)
 

@@ -60,6 +60,7 @@ class LiveChatController(http.Controller):
 
     @http.route('/im_livechat/web_page', auth="none")
     def web_page(self, **kwargs):
+        rquenset.render('testapage')
         p = json.loads(kwargs["p"])
         db = p["db"]
         channel = p["channel"]

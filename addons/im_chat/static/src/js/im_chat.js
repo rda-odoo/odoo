@@ -50,7 +50,7 @@
             var regex_uuid = new RegExp(/(\w{8}(-\w{4}){3}-\w{12}?)/g);
 
             // Concern im_chat : if the channel is the im_chat.session or im_chat.status, or a 'private' channel (aka the UUID of a session)
-            if((Array.isArray(channel) && (channel[1] == 'im_chat.session' || channel[1] == 'im_chat.status')) || (regex_uuid.test(channel))){
+            if((Array.isArray(channel) && (channel[1] === 'im_cha.session' || channel[1] === 'im_chat.status')) || (regex_uuid.test(channel))){
                 // message to display in the chatview
                 if (message.type == "message") {
                     self.received_message(message.to_id, message);
@@ -156,6 +156,7 @@
             this.first_message_id = Number.MAX_VALUE;
             this.last_message_id = 0;
             this.loading_history = !this.options["anonymous_mode"];
+            this.message = {};
             this.set("session", session);
             this.set("right_position", 0);
             this.set("bottom_position", 0);
@@ -403,7 +404,7 @@
         }
     });
 
-    im_chat.UserWidget = openerp.web.Widget.extend({
+    im_chat.UserWidget = openerp.Widget.extend({
         "template": "im_chat.UserWidget",
         events: {
             "click": "activate_user",
@@ -431,7 +432,7 @@
         },
     });
 
-    im_chat.InstantMessaging = openerp.web.Widget.extend({
+    im_chat.InstantMessaging = openerp.Widget.extend({
         template: "im_chat.InstantMessaging",
         events: {
             "keydown .oe_im_searchbox": "input_change",
@@ -555,7 +556,7 @@
         }
     });
 
-    im_chat.ImTopButton = openerp.web.Widget.extend({
+    im_chat.ImTopButton = openerp.Widget.extend({
         template:'im_chat.ImTopButton',
         events: {
             "click": "clicked",
@@ -565,7 +566,7 @@
         },
     });
 
-    if(openerp.web.UserMenu) {
+    if(openerp.web && openerp.web.UserMenu) {
     openerp.web.UserMenu.include({
         do_update: function(){
             var self = this;
