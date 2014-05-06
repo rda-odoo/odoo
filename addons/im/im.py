@@ -1,21 +1,21 @@
 # -*- coding: utf-8 -*-
-import base64
 import datetime
 import json
 import logging
 import select
 import threading
 import time
+import random
 
 import simplejson
 import openerp
 from openerp.osv import osv, fields
 from openerp.http import request
+from openerp.tools.misc import DEFAULT_SERVER_DATETIME_FORMAT
 
 _logger = logging.getLogger(__name__)
 
 TIMEOUT = 50
-TIMEOUT = 15
 
 """
 openerp.jsonRpc('/longpolling/poll','call',{"channels":["c1"],last:0}).then(function(r){console.log(r)});
@@ -27,7 +27,7 @@ openerp.jsonRpc('/longpolling/send','call',{"channel":"c2","message":"m2"}).then
 # Bus
 #----------------------------------------------------------
 def json_dump(v):
-    return simplejson.dumps(v ,separators=(',', ':'))
+    return simplejson.dumps(v, separators=(',', ':'))
 
 def hashable(key):
     if isinstance(key, list):
@@ -48,27 +48,41 @@ class ImBus(osv.Model):
         for channel, message in notifications:
             channels.add(channel)
             values = {
-                "channel" : simplejson.dumps(channel),
-                "message" : simplejson.dumps(message)
+                "channel" : json_dump(channel),
+                "message" : json_dump(message)
             }
             self.pool['im.bus'].create(cr, openerp.SUPERUSER_ID, values)
-            # TODO gcstatus
-            #if random.random() < 0.001:
-            # ids self.search(cr, uid, [create_date < now-TIMEOUT*2])
-            # self.unlink(ids)
+            # gc : remove old queued messages
+            if random.random() < 0.001:
+                ids  = self.search(cr, openerp.SUPERUSER_ID, [('create_date', '<', (datetime.datetime.now()-datetime.timedelta(seconds=(TIMEOUT*2))).strftime(DEFAULT_SERVER_DATETIME_FORMAT))])
+                self.unlink(cr, openerp.SUPERUSER_ID, ids)
+            #cr.commit()
         if channels:
+            print "############ NOTIFY ",uid, notifications
+            print channels
             with openerp.sql_db.db_connect('postgres').cursor() as cr2:
                 cr2.execute("notify imbus, %s", (json_dump(list(channels)),))
+                #cr2.commit()
+                #cr2.close()
 
     def sendone(self, cr, uid, channel, message):
         self.sendmany(cr, uid, [[channel, message]])
 
     def poll(self, cr, uid, channels, last):
+        # initialize the first poll : avoid to load all the messages of the im_bus queue
+        # it returns an empty notification (with only the last_id)
+        if(last == 0):
+            cr.execute('SELECT max(id) FROM '+self._table)
+            last_id = cr.fetchone()[0] or 0
+            print "================================================== ",last_id, last
+            return [(last_id, "im_bus", "")] 
         channels = [json_dump(c) for c in channels]
-        domain = [('id','>',last), ('channel','in',channels)]
-        ids = self.search(cr, uid, domain)
-        notifications = self.read(cr, uid, ids)
-        return notifications
+        domain = [('id','>',last), ('channel','in', channels)]
+        ids = self.search(cr, openerp.SUPERUSER_ID, domain)
+        notifications = self.browse(cr, uid, ids)
+        print "================================================== ",last, notifications
+        return [(notif.id, simplejson.loads(notif.channel), simplejson.loads(notif.message)) for notif in notifications]
+
 
 class ImDispatch(object):
     def __init__(self):
@@ -78,6 +92,9 @@ class ImDispatch(object):
         # Dont hang ctrl-c for a poll request, we need to bypass private
         # attribute access because we dont know before starting the thread that
         # it will handle a longpolling request
+
+
+
         if not openerp.evented:
             threading.current_thread()._Thread__daemonic = True
 
@@ -85,8 +102,9 @@ class ImDispatch(object):
 
         # immediatly returns if past notifications exist
         with registry.cursor() as cr:
-            notifications = registry['im.bus'].poll(cr, 1, channels, last)
-
+            notifications = registry['im.bus'].poll(cr, openerp.SUPERUSER_ID, channels, last)
+        print "########## LISTEN 1 : ", len(notifications)
+        print channels
         # or wait for future ones
         if not notifications:
             event = self.Event()
@@ -96,7 +114,9 @@ class ImDispatch(object):
                 print "Bus.poll", threading.current_thread(), channels
                 event.wait(timeout=timeout)
                 with registry.cursor() as cr:
-                    notifications = registry['im.bus'].poll(cr, 1, channels, last)
+                    notifications = registry['im.bus'].poll(cr, openerp.SUPERUSER_ID, channels, last)
+                    print "########## LISTEN 2 : ", len(notifications)
+                    print channels
             except Exception:
                 # timeout
                 pass
@@ -119,6 +139,7 @@ class ImDispatch(object):
                         channels.extend(json.loads(conn.notifies.pop().payload))
                     # dispatch to local threads/greenlets
                     events = set()
+                    print "################ wake up ", channels
                     for c in channels:
                         events.update(self.channels.pop(hashable(c),[]))
                     for e in events:

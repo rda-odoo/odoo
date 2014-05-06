@@ -4,6 +4,8 @@
     im.ERROR_DELAY = 30000;
 
     im.Bus = openerp.Widget.extend({
+    // openerp.EventDispatcherMixin
+    //im.Bus = openerp.Class.extend(openerp.PropertiesMixin, {
         init: function(){
             this._super();
             this.options = {};
@@ -27,8 +29,18 @@
         },
         on_notification: function(notification) {
             var self = this;
-            console.log("on_notification", JSON.stringify(notification));
-            this.trigger("notification", notification);
+            var notif_id = notification[0];
+           //console.log("on_notification", JSON.stringify(notification));
+            /*
+            console.log("LAST = ", this.last);
+            console.log("notif.id : ", notif_id);
+            console.log("....");
+            */
+            if (notif_id > this.last) {
+                this.last = notif_id;
+            }
+            // trigger the notification without the id, so notif[0] = channel, and notif[1] = message
+            this.trigger("notification", [notification[1],notification[2]]);
         },
         add_channel: function(channel){
             if(!_.contains(this.channels, channel)){
@@ -42,5 +54,7 @@
 
     // singleton
     im.bus = new im.Bus();
+
+    console.log(im.bus);
     return im;
 })();

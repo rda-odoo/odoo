@@ -49,21 +49,33 @@
 
             var regex_uuid = new RegExp(/(\w{8}(-\w{4}){3}-\w{12}?)/g);
 
+            console.log('ON NOTIF', JSON.stringify(notification));
+
             // Concern im_chat : if the channel is the im_chat.session or im_chat.status, or a 'private' channel (aka the UUID of a session)
-            if((Array.isArray(channel) && (channel[1] === 'im_cha.session' || channel[1] === 'im_chat.status')) || (regex_uuid.test(channel))){
+            if((Array.isArray(channel) && (channel[1] === 'im_chat.session' || channel[1] === 'im_chat.presence')) || (regex_uuid.test(channel))){
                 // message to display in the chatview
                 if (message.type == "message") {
-                    self.received_message(message.to_id, message);
+                    self.received_message(message);
                 }
-                // TODO : modify with an invitation to listen an other channel
+                // activate the received session
                 if(message.uuid){
-                    this.bus.add_channel(message.uuid);
+                    this.activate_session(message);
                 }
                 // user status notification
                 if(message.im_status){
                     self.trigger("im_new_user_status", [message]);
                 }
             }
+
+           /* if(Array.isArray(channel)){
+                if(channel[1] === 'im_chat.session'){
+                    // message
+                }else if(channel[1] === 'im_chat.presence'){
+                    // status message
+                }
+            }
+            */
+
         },
 
         // window focus unfocus beep and title
@@ -95,12 +107,12 @@
             openerp.webclient.set_title_part("im_messages", title);
         },
 
-        activate_session: function(session, init_messages, focus) {
+        activate_session: function(session, focus) {
             console.log("activate session ");
             var self = this;
             var conv = this.sessions[session.uuid];
             if (! conv) {
-                conv = new im_chat.Conversation(this, this, session, this.options, init_messages);
+                conv = new im_chat.Conversation(this, this, session, this.options);
                 conv.appendTo($("body"));
                 conv.on("destroyed", this, function() {
                     delete this.sessions[session.uuid];
@@ -108,21 +120,32 @@
                 });
                 this.sessions[session.uuid] = conv;
                 this.calc_positions();
+            }else{
+                conv.set("session", session);
             }
             this.trigger("im_session_activated", conv);
             if (focus)
                 conv.focus();
             return conv;
         },
-        received_message: function(channel, message) {
+        received_message: function(message) {
+            var self = this;
+            var session_id = message.to_id[0];
+            var uuid = message.to_id[1];
             if (! this.get("window_focus")) {
                 this.set("waiting_messages", this.get("waiting_messages") + 1);
             }
-            var conv = this.sessions[channel];
+            var conv = this.sessions[uuid];
+            //console.log("received_message conv = ", conv);
             if(!conv){
-                conv = this.activate_session(message.session, [message]);
+                // fetch the session, and init it with the message
+                var def_session = new openerp.web.Model("im_chat.session").call("session_info", [], {"ids" : [session_id]}).then(function(session){
+                    conv = self.activate_session(session, false);
+                    conv.received_message(message);
+                });
+            }else{
+                conv.received_message(message);
             }
-            conv.received_message(message);
         },
         calc_positions: function() {
             var self = this;
@@ -146,7 +169,7 @@
         events: {
             "keydown input": "keydown",
             "click .oe_im_chatview_close": "close",
-            "click .oe_im_chatview_header": "show_hide"
+            "click .oe_im_chatview_header": "click_header"
         },
         init: function(parent, c_manager, session, options, init_messages) {
             this._super(parent);
@@ -185,17 +208,21 @@
                     self.load_history();
                 }
             });
+            // prepare the header and the correcte state
+            // TODO : maybe this need to be called after self.$().show()
             self.update_session();
             // init with init_messages, then load history (to avoid duplicate)
             _.each(self.init_messages, function(m){
                 self.received_message(m);
             });
-            this.load_history();
+            //this.load_history();
             self.$().show();
-            if(this.get("session").fold_state && this.get("session").fold_state !== 'opened'){
+            /*
+            if(this.get("session").state && this.get("session").state !== 'open'){
                 this.$().height(this.$(".oe_im_chatview_header").outerHeight());
                 this.shown = false;
             }
+            */
         },
         show_hide: function() {
             if (this.shown) {
@@ -211,12 +238,13 @@
             if (this.shown) {
                 this.set("pending", 0);
             }
-            var state = this.shown ? 'opened' : 'folded';
-            this.update_fold_state(state);
+        },
+        click_header: function(){
+            this.update_fold_state(this.shown ? 'folded' : 'open');
         },
         update_fold_state: function(state){
             if(!this.options["anonymous_mode"]){
-                return new openerp.Model("im_chat.session_res_users_rel").call("update_state", [state, this.get("session").uuid]);
+                return new openerp.Model("im_chat.session").call("update_state", [this.get("session").uuid, state]);
             }
         },
         calc_pos: function() {
@@ -232,6 +260,16 @@
                 }
             });
             this.$(".oe_im_chatview_header_name").text(names.length ? names.join(", ") : this.get("session").name);
+            // update the fold state
+            if(this.get("session").state){
+                if(this.get("session").state === 'closed'){
+                    this.destroy();
+                }else{
+                    if((this.get("session").state === 'open' && !this.shown) || (this.get("session").state === 'folded' && this.shown)){
+                        this.show_hide();
+                    }
+                }
+            }
         },
         load_history: function(){
             var self = this;
@@ -393,10 +431,12 @@
         },
         close: function(event) {
             event.stopPropagation();
-            var def = this.update_fold_state('closed');
+            this.update_fold_state('closed');
+            /*
             return def.then(_.bind(function() {
                 this.destroy();
             }, this));
+*/
         },
         destroy: function() {
             this.trigger("destroyed");
@@ -423,7 +463,7 @@
             this.update_status();
         },
         update_status: function(){
-            this.$(".oe_im_user_online").toggle(this.get('im_status') !== 'disconnected');
+            this.$(".oe_im_user_online").toggle(this.get('im_status') !== 'offline');
             var img_src = (this.get('im_status') == 'away' ? '/im_chat/static/src/img/yellow.png' : '/im_chat/static/src/img/green.png');
             this.$(".oe_im_user_online").attr('src', openerp.session.server + img_src);
         },
@@ -475,12 +515,10 @@
             this.c_manager.on("im_new_user_status", this, this.update_users_status);
 
             // fetch the unread message and the recent activity (e.i. to re-init in case of refreshing page)
-            openerp.session.rpc("/im/init",{}).then(function(result) {
-                _.each(result['sessions'], function(session){
-                    var init_messages = _.filter(result['messages'], function(m){
-                        return m.to_id == session.uuid;
-                    }); 
-                    self.c_manager.activate_session(session, init_messages);
+            openerp.session.rpc("/im/init",{}).then(function(notifications) {
+                _.each(notifications, function(notif){
+                    console.log("==========================");
+                    self.c_manager.on_notification(notif);
                 });
                 // start polling
                 openerp.im.bus.poll();
@@ -545,7 +583,7 @@
             var self = this;
             var sessions = new openerp.web.Model("im_chat.session");
             return sessions.call("session_get", [user_id]).then(function(session) {
-               self.c_manager.activate_session(session, [], true);
+               self.c_manager.activate_session(session, true);
             });
         },
         update_users_status: function(users_list){
