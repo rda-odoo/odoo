@@ -138,9 +138,10 @@ class im_chat_session(osv.Model):
 
     def update_state(self, cr, uid, uuid, state, context=None):
         """ modify the fold_state of the given session, and broadcast to himself (e.i. : to sync multiple tabs) """
-        session_ids = self.pool['im_chat.session_res_users_rel'].search(cr, uid, [('user_id','=',uid), ('session_id.uuid','=',uuid)], context=context)
-        self.pool['im_chat.session_res_users_rel'].write(cr, uid, session_ids, {'state': state}, context=context)
-        session = self.browse(cr, uid, session_ids[0], context=context)
+        session_rel_ids = self.pool['im_chat.session_res_users_rel'].search(cr, openerp.SUPERUSER_ID, [('user_id','=',uid), ('session_id.uuid','=',uuid)], context=context)
+        self.pool['im_chat.session_res_users_rel'].write(cr, uid, session_rel_ids, {'state': state}, context=context)
+        session_rel = self.pool['im_chat.session_res_users_rel'].browse(cr, uid, session_rel_ids, context=context)
+        session = self.browse(cr, uid, session_rel[0].session_id.id, context=context)
         info = session.session_info()
         info['state'] = state
         self.pool['im.bus'].sendone(cr, uid, (cr.dbname, 'im_chat.session', uid), info)
@@ -152,8 +153,14 @@ class im_chat_session(osv.Model):
             if user_id not in [u.id for u in session.user_ids]:
                 self.write(cr, uid, [session.id], {'user_ids': [(4, user_id)]}, context=context)
                 # notify the all the channel users
-                for channel_user_id in session.users_ids:
-                    self.pool['im.bus'].sendone(cr, uid, (cr.dbname, 'im_chat.session', channel_user_id), session.session_info())
+                notifications = []
+                for channel_user_id in session.user_ids:
+                    notifications.append([(cr.dbname, 'im_chat.session', channel_user_id.id), session.session_info()])
+                self.pool['im.bus'].sendmany(cr, uid, notifications)
+                # send a message to the conversation
+                self.pool["im_chat.message"].post(cr, uid, session.uuid, "message", "Add to conversation", context=context)
+        
+
 
     def get_image(self, cr, uid, uuid, user_id, context=None):
         """ get the avatar of a user in the given session """
@@ -212,7 +219,7 @@ class im_chat_message(osv.Model):
         print threshold
         print len(messages)
         print notifications
-        
+
         return notifications
 
     def post(self, cr, uid, uuid, message_type, message_content, context=None):
@@ -289,8 +296,8 @@ class im_chat_presence(osv.Model):
         # notify if the status has changed
         if send_notification:
             self.pool['im.bus'].sendone(cr, uid, (cr.dbname,'im_chat.presence'), {'id': uid, 'im_status': vals['status']})
-        # gc : disconnect the users having a too old last_poll
-        if random.random() < 0.001:
+        # gc : disconnect the users having a too old last_poll. 1 on 100 chance to do it.
+        if random.random() < 0.01:
             self.check_users_disconnection(cr, uid, context=context)
         return True
 

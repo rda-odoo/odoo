@@ -32,7 +32,7 @@ def json_dump(v):
 def hashable(key):
     if isinstance(key, list):
         key = tuple(key)
-        return key
+    return key
 
 class ImBus(osv.Model):
     _name = 'im.bus'
@@ -72,15 +72,13 @@ class ImBus(osv.Model):
         # initialize the first poll : avoid to load all the messages of the im_bus queue
         # it returns an empty notification (with only the last_id)
         if(last == 0):
-            cr.execute('SELECT max(id) FROM '+self._table)
+            cr.execute('select max(id) from ' + self._table)
             last_id = cr.fetchone()[0] or 0
-            print "================================================== ",last_id, last
             return [(last_id, "im_bus", "")] 
         channels = [json_dump(c) for c in channels]
         domain = [('id','>',last), ('channel','in', channels)]
         ids = self.search(cr, openerp.SUPERUSER_ID, domain)
         notifications = self.browse(cr, uid, ids)
-        print "================================================== ",last, notifications
         return [(notif.id, simplejson.loads(notif.channel), simplejson.loads(notif.message)) for notif in notifications]
 
 
@@ -92,9 +90,6 @@ class ImDispatch(object):
         # Dont hang ctrl-c for a poll request, we need to bypass private
         # attribute access because we dont know before starting the thread that
         # it will handle a longpolling request
-
-
-
         if not openerp.evented:
             threading.current_thread()._Thread__daemonic = True
 

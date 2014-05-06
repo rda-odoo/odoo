@@ -136,7 +136,6 @@
                 this.set("waiting_messages", this.get("waiting_messages") + 1);
             }
             var conv = this.sessions[uuid];
-            //console.log("received_message conv = ", conv);
             if(!conv){
                 // fetch the session, and init it with the message
                 var def_session = new openerp.web.Model("im_chat.session").call("session_info", [], {"ids" : [session_id]}).then(function(session){
@@ -171,15 +170,14 @@
             "click .oe_im_chatview_close": "close",
             "click .oe_im_chatview_header": "click_header"
         },
-        init: function(parent, c_manager, session, options, init_messages) {
+        init: function(parent, c_manager, session, options) {
             this._super(parent);
             this.c_manager = c_manager;
             this.options = options || {};
-            this.init_messages = init_messages || [];
             this.first_message_id = Number.MAX_VALUE;
             this.last_message_id = 0;
             this.loading_history = !this.options["anonymous_mode"];
-            this.message = {};
+            this.messages = {};
             this.set("session", session);
             this.set("right_position", 0);
             this.set("bottom_position", 0);
@@ -208,21 +206,14 @@
                     self.load_history();
                 }
             });
-            // prepare the header and the correcte state
-            // TODO : maybe this need to be called after self.$().show()
-            self.update_session();
             // init with init_messages, then load history (to avoid duplicate)
             _.each(self.init_messages, function(m){
                 self.received_message(m);
             });
             //this.load_history();
             self.$().show();
-            /*
-            if(this.get("session").state && this.get("session").state !== 'open'){
-                this.$().height(this.$(".oe_im_chatview_header").outerHeight());
-                this.shown = false;
-            }
-            */
+            // prepare the header and the correcte state
+            self.update_session();
         },
         show_hide: function() {
             if (this.shown) {
@@ -421,8 +412,7 @@
             this.$(".oe_im_chatview_content").scrollTop(this.$(".oe_im_chatview_content").get(0).scrollHeight);
         },
         add_user: function(user){
-            var content = JSON.stringify({"user_id" : user.id, "user_name": user.name});
-            this.send_message(content, "add_user");
+            return new openerp.web.Model("im_chat.session").call("add_user", [this.get("session").uuid , user.id]);
         },
         focus: function() {
             this.$(".oe_im_chatview_input").focus();
@@ -432,11 +422,6 @@
         close: function(event) {
             event.stopPropagation();
             this.update_fold_state('closed');
-            /*
-            return def.then(_.bind(function() {
-                this.destroy();
-            }, this));
-*/
         },
         destroy: function() {
             this.trigger("destroyed");
