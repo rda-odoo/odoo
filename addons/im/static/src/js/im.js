@@ -30,12 +30,6 @@
         on_notification: function(notification) {
             var self = this;
             var notif_id = notification[0];
-           //console.log("on_notification", JSON.stringify(notification));
-            /*
-            console.log("LAST = ", this.last);
-            console.log("notif.id : ", notif_id);
-            console.log("....");
-            */
             if (notif_id > this.last) {
                 this.last = notif_id;
             }

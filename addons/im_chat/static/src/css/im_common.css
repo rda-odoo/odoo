@@ -73,19 +73,25 @@
     border-bottom: 1px solid #AEB9BD;
     cursor: pointer;
 }
-.oe_im_chatview .oe_im_chatview_close {
+.oe_im_chatview .oe_im_chatview_right {
     padding: 0;
+    background: transparent;
+    border: 0;
+    float: right;
+    color: black;
+}
+.oe_im_chatview .oe_im_chatview_right div, .oe_im_chatview .oe_im_chatview_right button{
     cursor: pointer;
     background: transparent;
     border: 0;
+    margin-left: 5px;
     -webkit-appearance: none;
     font-size: 18px;
     line-height: 16px;
-    float: right;
     font-weight: bold;
-    color: black;
     text-shadow: 0 1px 0 white;
-    opacity: 0.2;
+    opacity: 0.4;
+    display: inline-block;
 }
 .oe_im_chatview .oe_im_chatview_content {
     overflow: auto;
@@ -120,15 +126,30 @@
     -webkit-box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.2);
     box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.2);
 }
-.oe_im_chatview .oe_im_chatview_bubble {
+.oe_im_chatview .oe_im_chatview_message_bubble {
     background: white;
     position: relative;
+    min-height: 32px;
     padding: 3px;
     margin: 3px;
     -moz-border-radius: 3px;
     -webkit-border-radius: 3px;
     border-radius: 3px;
 }
+
+.oe_im_chatview .oe_im_chatview_technical_bubble {
+    background: #D8D8D8;
+    position: relative;
+    min-height: 32px;
+    padding: 3px;
+    margin: 3px;
+    -moz-border-radius: 3px;
+    -webkit-border-radius: 3px;
+    border-radius: 3px;
+
+    font-style:italic;
+}
+
 .oe_im_chatview .oe_im_chatview_clip {
     position: relative;
     float: left;
@@ -186,4 +207,14 @@
     margin-top: -4px;
     width: 11px;
     height: 11px;
+}
+
+.oe_im_chatview .oe_im_chatview_date_separator {
+    background: transparent;
+    position: relative;
+    padding: 3px;
+    color: #aaa;
+    margin: 3px;
+    text-align: right;
+    font-size: 12px;
 }

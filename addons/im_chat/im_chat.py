@@ -158,9 +158,8 @@ class im_chat_session(osv.Model):
                     notifications.append([(cr.dbname, 'im_chat.session', channel_user_id.id), session.session_info()])
                 self.pool['im.bus'].sendmany(cr, uid, notifications)
                 # send a message to the conversation
-                self.pool["im_chat.message"].post(cr, uid, session.uuid, "message", "Add to conversation", context=context)
-        
-
+                user = self.pool['res.users'].read(cr, uid, user_id, ['name'], context=context)
+                self.pool["im_chat.message"].post(cr, uid, session.uuid, "meta", user['name'] + " joined the conversation.", context=context)
 
     def get_image(self, cr, uid, uuid, user_id, context=None):
         """ get the avatar of a user in the given session """
@@ -202,7 +201,7 @@ class im_chat_message(osv.Model):
 
         domain = [('to_id.user_ids', 'in', [uid]), ('date','>',threshold)]
         messages = self.search_read(cr, uid, domain, ['from_id','to_id','date','type','message'], order='id asc', context=context)
-
+        
         domain = [('user_id','=',uid), ('state','!=','closed')]
         session_rels_ids = self.pool['im_chat.session_res_users_rel'].search(cr, uid, domain, context=context)
         session_rels = self.pool['im_chat.session_res_users_rel'].browse(cr, uid, session_rels_ids, context=context)

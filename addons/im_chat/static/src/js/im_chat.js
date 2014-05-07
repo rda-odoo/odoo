@@ -54,7 +54,7 @@
             // Concern im_chat : if the channel is the im_chat.session or im_chat.status, or a 'private' channel (aka the UUID of a session)
             if((Array.isArray(channel) && (channel[1] === 'im_chat.session' || channel[1] === 'im_chat.presence')) || (regex_uuid.test(channel))){
                 // message to display in the chatview
-                if (message.type == "message") {
+                if (message.type == "message" || message.type == "meta") {
                     self.received_message(message);
                 }
                 // activate the received session
@@ -66,16 +66,6 @@
                     self.trigger("im_new_user_status", [message]);
                 }
             }
-
-           /* if(Array.isArray(channel)){
-                if(channel[1] === 'im_chat.session'){
-                    // message
-                }else if(channel[1] === 'im_chat.presence'){
-                    // status message
-                }
-            }
-            */
-
         },
 
         // window focus unfocus beep and title
@@ -174,10 +164,8 @@
             this._super(parent);
             this.c_manager = c_manager;
             this.options = options || {};
-            this.first_message_id = Number.MAX_VALUE;
-            this.last_message_id = 0;
             this.loading_history = !this.options["anonymous_mode"];
-            this.messages = {};
+            this.set("messages", []);
             this.set("session", session);
             this.set("right_position", 0);
             this.set("bottom_position", 0);
@@ -201,14 +189,12 @@
                     self.$(".oe_im_chatview_nbr_messages").text("(" + self.get("pending") + ")");
                 }
             }, self));
+            // messages business
+            self.on("change:messages", this, this.render_messages);
             self.$('.oe_im_chatview_content').on('scroll',function(){
                 if($(this).scrollTop() === 0){
                     self.load_history();
                 }
-            });
-            // init with init_messages, then load history (to avoid duplicate)
-            _.each(self.init_messages, function(m){
-                self.received_message(m);
             });
             //this.load_history();
             self.$().show();
@@ -243,14 +229,8 @@
             this.$().css("bottom", this.get("bottom_position"));
         },
         update_session: function(){
-            // built the name
-            var names = [];
-            _.each(this.get("session").users, function(user){
-                if(openerp.session.uid != user.id){
-                    names.push(user.name);
-                }
-            });
-            this.$(".oe_im_chatview_header_name").text(names.length ? names.join(", ") : this.get("session").name);
+            //set header of session
+            this.$(".oe_im_chatview_header_name").text(this.get("session").name);
             // update the fold state
             if(this.get("session").state){
                 if(this.get("session").state === 'closed'){
@@ -264,31 +244,25 @@
         },
         load_history: function(){
             var self = this;
-                if(this.loading_history){
-                    var domain = [["to_id.uuid", "=", this.get("session").uuid]];
-                    if(this.first_message_id !== Number.MAX_VALUE){
-                        domain.push(['id','<',this.first_message_id]);
+            if(this.loading_history){
+                var domain = [["to_id.uuid", "=", this.get("session").uuid]];
+                _.first(this.get("messages")) && domain.push(['id','<', _.first(this.get("messages")).id]);
+                new openerp.web.Model("im_chat.message").call("search_read", [domain, ['id', 'date','to_id','from_id', 'type', 'message'], 0, NBR_LIMIT_HISTORY]).then(function(messages){
+                    self.insert_messages(messages);
+                    if(messages.length != NBR_LIMIT_HISTORY){
+                        self.loading_history = false;
                     }
-                    new openerp.web.Model("im_chat.message").call("search_read", [domain, ['id', 'date','to_id','from_id', 'type', 'message'], 0, NBR_LIMIT_HISTORY]).then(function(messages){
-                        messages.reverse();
-                        if(messages.length > 0){
-                            self._preprend_messages(messages);
-                        }
-                        if(messages.length != NBR_LIMIT_HISTORY){
-                            self.loading_history = false;
-                        }
-                    });
-                }
+                });
+            }
         },
         received_message: function(message) {
-            if(this.last_message_id < message.id){
+            if(!_.contains(_.pluck(this.get("messages"), 'id'), message.id)){
                 if (this.shown) {
                     this.set("pending", 0);
                 } else {
                     this.set("pending", this.get("pending") + 1);
                 }
-                message.session && this.set("session", message.session);
-                this._append_messages([message]);
+                this.insert_messages([message]);
             }
         },
         send_message: function(message, type) {
@@ -303,6 +277,43 @@
                 if (tries < 3)
                     return send_it();
             });
+        },
+        insert_messages: function(messages){
+            var self = this;
+            _.map(messages, function(m){ m.message = self.escape_keep_url(m.message); return m; });
+           this.set("messages", _.sortBy(this.get("messages").concat(messages), function(m){ return m.id; }));
+        },
+        render_messages: function(){
+            var self = this;
+            var res = {};
+            var last_date_day, last_user_id;
+            var num = 0;
+            _.each(this.get("messages"), function(current){
+                var date_day = current.date.split(" ")[0];
+                if(date_day !== last_date_day){
+                    res[date_day] = [];
+                }
+                last_date_day = date_day;
+                if(current.type == "message"){ // traditionnal message
+                    if(last_user_id === current.from_id[0]){
+                        _.last(res[date_day]).push(current);
+                    }else{
+                        res[date_day].push([current]);
+                    }
+                    last_user_id = current.from_id[0];
+                }else{ // meta message
+                    res[date_day].push([current]);
+                    last_user_id = 0;
+                }
+            });
+            // add the url of the avatar for all users in the conversation
+            var users = this.get("session").users;
+            _.each(users, function(user){
+                user['avatar_url'] = openerp.session.url('/im/image', {uuid: self.get('session').uuid, user_id: user.id});
+            });
+            // render and set the content of the chatview
+            this.$('.oe_im_chatview_content_bubbles').html($(openerp.qweb.render("im_chat.Conversation_content", {"list": res, "users" : _.indexBy(users, 'id')})));
+            this._go_bottom();
         },
         keydown: function(e) {
             if(e && e.which !== 13) {
@@ -330,83 +341,6 @@
             }
             txt += _.escape(str.slice(last, str.length));
             return txt;
-        },
-        _append_messages: function(messages){
-            console.log(" ########## APPEND : "+JSON.stringify(messages.length));
-            var self = this;
-            this.last_message_id = _.last(messages).id;
-            this.first_message_id = _.min([this.first_message_id, _.first(messages).id]);
-
-            var bubbles = this._build_bubbles(messages, this.last_bubble);
-            _.each(bubbles, function(b){
-                self.$(".oe_im_chatview_content").append(b);
-            });
-            this.last_bubble = _.last(bubbles);
-            this._go_bottom();
-        },
-        _preprend_messages: function(messages){
-            console.log(" ########### PREPEND : "+JSON.stringify(messages.length));
-            var self = this;
-            this.first_message_id = _.min([this.first_message_id, _.first(messages).id]);
-
-            var bubbles = this._build_bubbles(messages);
-            bubbles.reverse();
-            _.each(bubbles, function(b){
-                self.$(".oe_im_chatview_content").prepend(b);
-            });
-        },
-        _build_bubbles: function(messages, last_b){
-            var zpad = function(str, size) {
-                str = "" + str;
-                return new Array(size - str.length + 1).join('0') + str;
-            };
-            var bubbles = [];
-            last_b && bubbles.push(last_b);
-            for (var i=0; i < messages.length; i++){
-                var current = messages[i];
-
-                // insert a date bubble if needed
-                var date = openerp.str_to_datetime(current.date);
-                //var date_hours = "" + zpad(date.getHours(), 2) + ":" + zpad(date.getMinutes(), 2);
-                var date_hours = "";
-                current.date = "a b";
-                var date_day = current.date.split(" ")[0];
-                if(!_.last(bubbles) || _.last(bubbles).data("date_day") != date_day){
-                    var bubble_date = $(openerp.qweb.render("im_chat.Conversation_date_separator", {"date": date_day}));
-                    bubbles.push(bubble_date);
-                }
-                // append or create new bubble for the message
-                if(current.type == "message"){ // traditionnal message
-                    if(_.last(bubbles) && _.last(bubbles).data("user_id") === current.from_id[0]){
-                        // append to the list of item of the bubble
-                        var item = $('<div></div>').text(this.escape_keep_url(current.message)).addClass("oe_im_chatview_bubble_item");
-                        _.last(bubbles).find('.oe_im_chatview_bubble_list').append(item);
-                        _.last(bubbles).find('.oe_im_chatview_time').text(date_hours);
-                    }else{
-                        // create a new bubble
-                        var to_show = this.escape_keep_url(current.message);
-                        var img = openerp.session.url('/im/image', {uuid: this.get('session').uuid, user_id: current.from_id[0]});
-                        var bubble_tmp = $(openerp.qweb.render("im_chat.Conversation_bubble", {"items": [to_show], "user": current.from_id, "time": date_hours, 'avatar_url': img}));
-                        bubble_tmp.data("user_id", current.from_id[0]);
-                        bubble_tmp.data("date_day", date_day);
-                        bubbles.push(bubble_tmp);
-                    }
-                }else{ // technical message
-                    // create new bubble and set no data attributes
-                    switch (current.type) {
-                        case "add_user":
-                            var user_info = JSON.parse(current.message);
-                            var tech_mess = user_info["user_name"] + _t(" was invited by ") + current.from_id[1];
-                            var bubble_tmp = $(openerp.qweb.render("im_chat.Conversation_technical_bubble", {"technical_message": tech_mess, "time": date_hours}));
-                            bubble_tmp.data("date_day", date_day);
-                            bubbles.push(bubble_tmp);
-                            break;
-                        case "invitation":
-                            break;
-                    }
-                }
-            }
-            return bubbles;
         },
         _go_bottom: function() {
             this.$(".oe_im_chatview_content").scrollTop(this.$(".oe_im_chatview_content").get(0).scrollHeight);
@@ -502,7 +436,6 @@
             // fetch the unread message and the recent activity (e.i. to re-init in case of refreshing page)
             openerp.session.rpc("/im/init",{}).then(function(notifications) {
                 _.each(notifications, function(notif){
-                    console.log("==========================");
                     self.c_manager.on_notification(notif);
                 });
                 // start polling
@@ -590,20 +523,20 @@
     });
 
     if(openerp.web && openerp.web.UserMenu) {
-    openerp.web.UserMenu.include({
-        do_update: function(){
-            var self = this;
-            this.update_promise.then(function() {
-                var im = new openerp.im_chat.InstantMessaging(self);
-                openerp.im_chat.single = im;
-                im.appendTo(openerp.client.$el);
-                var button = new openerp.im_chat.ImTopButton(this);
-                button.on("clicked", im, im.switch_display);
-                button.appendTo(openerp.webclient.$el.find('.oe_systray'));
-            });
-            return this._super.apply(this, arguments);
-        },
-    });
+        openerp.web.UserMenu.include({
+            do_update: function(){
+                var self = this;
+                this.update_promise.then(function() {
+                    var im = new openerp.im_chat.InstantMessaging(self);
+                    openerp.im_chat.single = im;
+                    im.appendTo(openerp.client.$el);
+                    var button = new openerp.im_chat.ImTopButton(this);
+                    button.on("clicked", im, im.switch_display);
+                    button.appendTo(openerp.webclient.$el.find('.oe_systray'));
+                });
+                return this._super.apply(this, arguments);
+            },
+        });
     }
 
     return im_chat;
