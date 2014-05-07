@@ -201,11 +201,13 @@ class im_chat_message(osv.Model):
 
         domain = [('to_id.user_ids', 'in', [uid]), ('date','>',threshold)]
         messages = self.search_read(cr, uid, domain, ['from_id','to_id','date','type','message'], order='id asc', context=context)
+        # get the session of the messages
+        session_ids = map(lambda m: m['to_id'][0], messages)
+        domain = [('user_id','=',uid), '|', ('state','!=','closed'), ('session_id', 'in', session_ids)]
         
-        domain = [('user_id','=',uid), ('state','!=','closed')]
         session_rels_ids = self.pool['im_chat.session_res_users_rel'].search(cr, uid, domain, context=context)
         session_rels = self.pool['im_chat.session_res_users_rel'].browse(cr, uid, session_rels_ids, context=context)
-        
+
         notifications = []
         for sr in session_rels:
             si = sr.session_id.session_info()
@@ -213,12 +215,6 @@ class im_chat_message(osv.Model):
             notifications.append([(cr.dbname,'im_chat.session', uid), si])
         for m in messages:
             notifications.append([(cr.dbname,'im_chat.session', uid), m])
-        
-        print "######################### init messages" 
-        print threshold
-        print len(messages)
-        print notifications
-
         return notifications
 
     def post(self, cr, uid, uuid, message_type, message_content, context=None):
