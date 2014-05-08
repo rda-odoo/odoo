@@ -21,7 +21,7 @@
 <t t-name="im_chat.Conversation_content">
     <t t-foreach="_.keys(list)" t-as="date">
         <div class="oe_im_chatview_date_separator">
-            <t t-esc="date"/>
+            <t t-esc="Date.parse(date).toString(Date.CultureInfo.formatPatterns.longDate)"/>
         </div>
         <t t-foreach="list[date]" t-as="bubble">
             <t t-if="bubble[0].type === 'message'">
@@ -29,13 +29,13 @@
                     <t t-set="messages" t-value="bubble"/>
                     <t t-set="user" t-value="users[bubble[0].from_id[0]]"/>
                 </t>
-            </t> 
+            </t>
             <t t-if="bubble[0].type === 'meta'">
                 <t t-call="im_chat.Conversation_technical_bubble">
                     <t t-set="messages" t-value="bubble"/>
                     <t t-set="user" t-value="users[bubble[0].from_id[0]]"/>
                 </t>
-            </t> 
+            </t>
         </t>
     </t>
 </t>
@@ -50,7 +50,7 @@
                 <div class="oe_im_chatview_bubble_item"><t t-raw="m.message"/></div>
             </t>
         </div>
-        <div class="oe_im_chatview_time"><t t-esc="_.last(messages).date"/></div>
+        <div class="oe_im_chatview_time"><t t-esc="Date.parse((_.last(messages).create_date)).toString('HH:mm')"/></div>
     </div>
 </t>
 <t t-name="im_chat.Conversation_technical_bubble">
@@ -61,7 +61,7 @@
                 <div><t t-raw="m.message"/></div>
             </t>
         </div>
-        <div class="oe_im_chatview_time"><t t-esc="_.last(messages).date"/></div>
+        <div class="oe_im_chatview_time"><t t-esc="Date.parse((_.last(messages).create_date)).toString('HH:mm')"/></div>
     </div>
 </t>
 

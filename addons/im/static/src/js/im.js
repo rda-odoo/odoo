@@ -4,8 +4,6 @@
     im.ERROR_DELAY = 30000;
 
     im.Bus = openerp.Widget.extend({
-    // openerp.EventDispatcherMixin
-    //im.Bus = openerp.Class.extend(openerp.PropertiesMixin, {
         init: function(){
             this._super();
             this.options = {};
@@ -17,7 +15,6 @@
             var self = this;
             self.activated = true;
             var data = {'channels': self.channels, 'last': self.last, 'options' : self.options};
-            console.log('poll',  JSON.stringify(data));
             openerp.session.rpc("/longpolling/poll", data, {shadow: true}).then(function(result) {
                 _.each(result, _.bind(self.on_notification, self));
                 self.poll();
@@ -46,9 +43,10 @@
         },
     });
 
-    // singleton
+    // singleton, and directly start the polling
     im.bus = new im.Bus();
+    im.bus.poll();
 
-    console.log(im.bus);
     return im;
+
 })();

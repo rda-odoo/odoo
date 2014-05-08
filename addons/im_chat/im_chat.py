@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import base64
 import datetime
-import logging
 import time
 import uuid
 import random
@@ -13,8 +12,6 @@ from openerp.http import request
 from openerp.osv import osv, fields
 from openerp.tools.misc import DEFAULT_SERVER_DATETIME_FORMAT
 from openerp.addons.im.im import TIMEOUT
-
-_logger = logging.getLogger(__name__)
 
 DISCONNECTION_TIMER = TIMEOUT + 5
 AWAY_TIMER = 600 # 10 minutes
@@ -181,30 +178,29 @@ class im_chat_message(osv.Model):
     _name = 'im_chat.message'
     _order = "id desc"
     _columns = {
-        'date': fields.datetime('Create Date', required=True, select=True),
+        'create_date': fields.datetime('Create Date', required=True, select=True),
         'from_id': fields.many2one('res.users', 'Author'),
         'to_id': fields.many2one('im_chat.session', 'Session To', required=True, select=True, ondelete='cascade'),
         'type': fields.selection([('message','Message'), ('meta','Meta')], 'Type'),
         'message': fields.char('Message'),
     }
     _defaults = {
-        'date' : fields.datetime.now,
         'type' : 'message',
     }
 
     def init_messages(self, cr, uid, context=None):
         """ get unread messages and old messages received less than AWAY_TIMER
-            ago and the session_info for open or folded window 
+            ago and the session_info for open or folded window
         """
         threshold = datetime.datetime.now() - datetime.timedelta(seconds=AWAY_TIMER)
         threshold = threshold.strftime(DEFAULT_SERVER_DATETIME_FORMAT)
 
-        domain = [('to_id.user_ids', 'in', [uid]), ('date','>',threshold)]
-        messages = self.search_read(cr, uid, domain, ['from_id','to_id','date','type','message'], order='id asc', context=context)
+        domain = [('to_id.user_ids', 'in', [uid]), ('create_date','>',threshold)]
+        messages = self.search_read(cr, uid, domain, ['from_id','to_id','create_date','type','message'], order='id asc', context=context)
         # get the session of the messages
         session_ids = map(lambda m: m['to_id'][0], messages)
         domain = [('user_id','=',uid), '|', ('state','!=','closed'), ('session_id', 'in', session_ids)]
-        
+
         session_rels_ids = self.pool['im_chat.session_res_users_rel'].search(cr, uid, domain, context=context)
         session_rels = self.pool['im_chat.session_res_users_rel'].browse(cr, uid, session_rels_ids, context=context)
 
@@ -234,7 +230,7 @@ class im_chat_message(osv.Model):
             # save it
             message_id = self.create(cr, openerp.SUPERUSER_ID, vals, context=context)
             # broadcast it to channel (anonymous users) and users_ids
-            data = self.read(cr, uid, [message_id], ['from_id','to_id','date','type','message'], context=context)[0]
+            data = self.read(cr, uid, [message_id], ['from_id','to_id','create_date','type','message'], context=context)[0]
             notifications.append([uuid, data])
             for user in session.user_ids:
                 notifications.append([(cr.dbname, 'im_chat.session', user.id), data])
@@ -261,13 +257,13 @@ class im_chat_presence(osv.Model):
     }
     _sql_constraints = [('im_chat_user_status_unique','unique(user_id)', 'A user can only have one IM status.')]
 
-    def update(self, cr, uid, presence=True, context=None): 
+    def update(self, cr, uid, presence=True, context=None):
         """ register the poll, and change its im status if necessary. It also notify the Bus if the status has changed. """
         presence_ids = self.search(cr, openerp.SUPERUSER_ID, [('user_id', '=', uid)], context=context)
         presences = self.browse(cr, openerp.SUPERUSER_ID, presence_ids, context=context)
         # set the default values
         send_notification = True
-        vals = {    
+        vals = {
             'last_poll': time.strftime(DEFAULT_SERVER_DATETIME_FORMAT),
             'status' : presences and presences[0].status or 'offline'
         }

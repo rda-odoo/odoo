@@ -56,14 +56,9 @@ class ImBus(osv.Model):
             if random.random() < 0.001:
                 ids  = self.search(cr, openerp.SUPERUSER_ID, [('create_date', '<', (datetime.datetime.now()-datetime.timedelta(seconds=(TIMEOUT*2))).strftime(DEFAULT_SERVER_DATETIME_FORMAT))])
                 self.unlink(cr, openerp.SUPERUSER_ID, ids)
-            #cr.commit()
         if channels:
-            print "############ NOTIFY ",uid, notifications
-            print channels
             with openerp.sql_db.db_connect('postgres').cursor() as cr2:
                 cr2.execute("notify imbus, %s", (json_dump(list(channels)),))
-                #cr2.commit()
-                #cr2.close()
 
     def sendone(self, cr, uid, channel, message):
         self.sendmany(cr, uid, [[channel, message]])
@@ -74,7 +69,8 @@ class ImBus(osv.Model):
         if(last == 0):
             cr.execute('select max(id) from ' + self._table)
             last_id = cr.fetchone()[0] or 0
-            return [(last_id, "im_bus", "")] 
+            return [(last_id, "im_bus", "")]
+        # else returns the unread notifications
         channels = [json_dump(c) for c in channels]
         domain = [('id','>',last), ('channel','in', channels)]
         ids = self.search(cr, openerp.SUPERUSER_ID, domain)
@@ -98,20 +94,15 @@ class ImDispatch(object):
         # immediatly returns if past notifications exist
         with registry.cursor() as cr:
             notifications = registry['im.bus'].poll(cr, openerp.SUPERUSER_ID, channels, last)
-        print "########## LISTEN 1 : ", len(notifications)
-        print channels
         # or wait for future ones
         if not notifications:
             event = self.Event()
             for c in channels:
                 self.channels.setdefault(hashable(c), []).append(event)
             try:
-                print "Bus.poll", threading.current_thread(), channels
                 event.wait(timeout=timeout)
                 with registry.cursor() as cr:
                     notifications = registry['im.bus'].poll(cr, openerp.SUPERUSER_ID, channels, last)
-                    print "########## LISTEN 2 : ", len(notifications)
-                    print channels
             except Exception:
                 # timeout
                 pass
@@ -134,7 +125,6 @@ class ImDispatch(object):
                         channels.extend(json.loads(conn.notifies.pop().payload))
                     # dispatch to local threads/greenlets
                     events = set()
-                    print "################ wake up ", channels
                     for c in channels:
                         events.update(self.channels.pop(hashable(c),[]))
                     for e in events:

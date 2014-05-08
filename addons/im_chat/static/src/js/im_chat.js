@@ -19,7 +19,6 @@
                 username: _t("Anonymous"),
                 anonymous_mode: false
             });
-
             // business
             this.sessions = {};
             this.bus = openerp.im.bus;
@@ -46,10 +45,7 @@
             var self = this;
             var channel = notification[0];
             var message = notification[1];
-
             var regex_uuid = new RegExp(/(\w{8}(-\w{4}){3}-\w{12}?)/g);
-
-            console.log('ON NOTIF', JSON.stringify(notification));
 
             // Concern im_chat : if the channel is the im_chat.session or im_chat.status, or a 'private' channel (aka the UUID of a session)
             if((Array.isArray(channel) && (channel[1] === 'im_chat.session' || channel[1] === 'im_chat.presence')) || (regex_uuid.test(channel))){
@@ -98,7 +94,6 @@
         },
 
         activate_session: function(session, focus) {
-            console.log("activate session ");
             var self = this;
             var conv = this.sessions[session.uuid];
             if (! conv) {
@@ -196,7 +191,7 @@
                     self.load_history();
                 }
             });
-            //this.load_history();
+            self.load_history();
             self.$().show();
             // prepare the header and the correcte state
             self.update_session();
@@ -229,8 +224,14 @@
             this.$().css("bottom", this.get("bottom_position"));
         },
         update_session: function(){
-            //set header of session
-            this.$(".oe_im_chatview_header_name").text(this.get("session").name);
+            // built the name
+            var names = [];
+            _.each(this.get("session").users, function(user){
+                if(openerp.session.uid != user.id){
+                    names.push(user.name);
+                }
+            });
+            this.$(".oe_im_chatview_header_name").text(names.length ? names.join(", ") : this.get("session").name);
             // update the fold state
             if(this.get("session").state){
                 if(this.get("session").state === 'closed'){
@@ -247,23 +248,22 @@
             if(this.loading_history){
                 var domain = [["to_id.uuid", "=", this.get("session").uuid]];
                 _.first(this.get("messages")) && domain.push(['id','<', _.first(this.get("messages")).id]);
-                new openerp.web.Model("im_chat.message").call("search_read", [domain, ['id', 'date','to_id','from_id', 'type', 'message'], 0, NBR_LIMIT_HISTORY]).then(function(messages){
+                new openerp.web.Model("im_chat.message").call("search_read", [domain, ['id', 'create_date','to_id','from_id', 'type', 'message'], 0, NBR_LIMIT_HISTORY]).then(function(messages){
                     self.insert_messages(messages);
-                    if(messages.length != NBR_LIMIT_HISTORY){
+					if(messages.length != NBR_LIMIT_HISTORY){
                         self.loading_history = false;
                     }
                 });
             }
         },
         received_message: function(message) {
-            if(!_.contains(_.pluck(this.get("messages"), 'id'), message.id)){
-                if (this.shown) {
-                    this.set("pending", 0);
-                } else {
-                    this.set("pending", this.get("pending") + 1);
-                }
-                this.insert_messages([message]);
+            if (this.shown) {
+                this.set("pending", 0);
+            } else {
+                this.set("pending", this.get("pending") + 1);
             }
+            this.insert_messages([message]);
+            this._go_bottom();
         },
         send_message: function(message, type) {
             var self = this;
@@ -279,19 +279,26 @@
             });
         },
         insert_messages: function(messages){
-            var self = this;
-            _.map(messages, function(m){ m.message = self.escape_keep_url(m.message); return m; });
-           this.set("messages", _.sortBy(this.get("messages").concat(messages), function(m){ return m.id; }));
+        	var self = this;
+            // avoid duplicated messages
+        	messages = _.filter(messages, function(m){ return !_.contains(_.pluck(self.get("messages"), 'id'), m.id) ; });
+            // escape the message content and set the timezone
+            _.map(messages, function(m){
+                m.message = self.escape_keep_url(m.message);
+                m.create_date = Date.parse(m.create_date).setTimezone("UTC").toString("yyyy-dd-MM HH:mm:ss");
+                return m;
+            });
+           	this.set("messages", _.sortBy(this.get("messages").concat(messages), function(m){ return m.id; }));
         },
         render_messages: function(){
             var self = this;
             var res = {};
             var last_date_day, last_user_id;
-            var num = 0;
             _.each(this.get("messages"), function(current){
-                var date_day = current.date.split(" ")[0];
+                var date_day = current.create_date.split(" ")[0];
                 if(date_day !== last_date_day){
                     res[date_day] = [];
+                    last_user_id = 0;
                 }
                 last_date_day = date_day;
                 if(current.type == "message"){ // traditionnal message
@@ -313,7 +320,6 @@
             });
             // render and set the content of the chatview
             this.$('.oe_im_chatview_content_bubbles').html($(openerp.qweb.render("im_chat.Conversation_content", {"list": res, "users" : _.indexBy(users, 'id')})));
-            this._go_bottom();
         },
         keydown: function(e) {
             if(e && e.which !== 13) {
@@ -439,7 +445,7 @@
                     self.c_manager.on_notification(notif);
                 });
                 // start polling
-                openerp.im.bus.poll();
+                //openerp.im.bus.poll();
             });
             return;
         },
@@ -456,7 +462,7 @@
         search_changed: function(e) {
             var user_model = new openerp.web.Model("res.users");
             var self = this;
-            return this.user_search_dm.add(user_model.call("im_search", [this.get("current_search"), 
+            return this.user_search_dm.add(user_model.call("im_search", [this.get("current_search"),
                         USERS_LIMIT], {context:new openerp.web.CompoundContext()})).then(function(result) {
                 self.$(".oe_im_input").val("");
                 var old_widgets = self.widgets;
