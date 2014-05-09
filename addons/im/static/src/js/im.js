@@ -7,24 +7,25 @@
         init: function(){
             this._super();
             this.options = {};
-            this.activated = true;
+            this.activated = false;
             this.channels = [];
             this.last = 0;
-            if(!openerp.session){
-                 openerp.session = new openerp.Session();
+        },
+        start_polling: function(){
+            if(!this.activated){
+                this.poll();
             }
         },
-        poll: function() {
+        poll: function(){
             var self = this;
             self.activated = true;
             var data = {'channels': self.channels, 'last': self.last, 'options' : self.options};
             console.log("POLL ", data);
-            console.log(openerp);
-            openerp.session.rpc("/longpolling/poll", data, {shadow: true}).then(function(result) {
+            this.request = openerp.jsonRpc('/longpolling/poll', 'call', data).then(function(result) {
                 _.each(result, _.bind(self.on_notification, self));
                 self.poll();
             }, function(unused, e) {
-                e.preventDefault();
+                //e.preventDefault();
                 self.activated = false;
                 setTimeout(_.bind(self.poll, self), im.ERROR_DELAY);
             });
@@ -48,10 +49,8 @@
         },
     });
 
-    // singleton, and directly start the polling
+    // singleton
     im.bus = new im.Bus();
-    im.bus.poll();
-
     return im;
 
 })();

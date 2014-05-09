@@ -16,7 +16,7 @@
             _.defaults(this.options, {
                 inputPlaceholder: _t("Say something..."),
                 defaultMessage: null,
-                username: _t("Anonymous"),
+                defaultUsername: _t("Anonymous"),
                 anonymous_mode: false
             });
             // business
@@ -123,7 +123,7 @@
             var conv = this.sessions[uuid];
             if(!conv){
                 // fetch the session, and init it with the message
-                var def_session = new openerp.web.Model("im_chat.session").call("session_info", [], {"ids" : [session_id]}).then(function(session){
+                var def_session = new openerp.Model("im_chat.session").call("session_info", [], {"ids" : [session_id]}).then(function(session){
                     conv = self.activate_session(session, false);
                     conv.received_message(message);
                 });
@@ -217,6 +217,12 @@
         update_fold_state: function(state){
             if(!this.options["anonymous_mode"]){
                 return new openerp.Model("im_chat.session").call("update_state", [this.get("session").uuid, state]);
+            }else{
+                if(state === 'closed'){
+                    this.destroy();
+                }else{
+                    this.show_hide();
+                }
             }
         },
         calc_pos: function() {
@@ -248,7 +254,7 @@
             if(this.loading_history){
                 var domain = [["to_id.uuid", "=", this.get("session").uuid]];
                 _.first(this.get("messages")) && domain.push(['id','<', _.first(this.get("messages")).id]);
-                new openerp.web.Model("im_chat.message").call("search_read", [domain, ['id', 'create_date','to_id','from_id', 'type', 'message'], 0, NBR_LIMIT_HISTORY]).then(function(messages){
+                new openerp.Model("im_chat.message").call("search_read", [domain, ['id', 'create_date','to_id','from_id', 'type', 'message'], 0, NBR_LIMIT_HISTORY]).then(function(messages){
                     self.insert_messages(messages);
 					if(messages.length != NBR_LIMIT_HISTORY){
                         self.loading_history = false;
@@ -284,6 +290,9 @@
         	messages = _.filter(messages, function(m){ return !_.contains(_.pluck(self.get("messages"), 'id'), m.id) ; });
             // escape the message content and set the timezone
             _.map(messages, function(m){
+                if(!m.from_id){
+                    m.from_id = [0, self.options["defaultUsername"]];
+                }
                 m.message = self.escape_keep_url(m.message);
                 m.create_date = Date.parse(m.create_date).setTimezone("UTC").toString("yyyy-dd-MM HH:mm:ss");
                 return m;
@@ -293,12 +302,12 @@
         render_messages: function(){
             var self = this;
             var res = {};
-            var last_date_day, last_user_id;
+            var last_date_day, last_user_id = -1;
             _.each(this.get("messages"), function(current){
                 var date_day = current.create_date.split(" ")[0];
                 if(date_day !== last_date_day){
                     res[date_day] = [];
-                    last_user_id = 0;
+                    last_user_id = -1;
                 }
                 last_date_day = date_day;
                 if(current.type == "message"){ // traditionnal message
@@ -310,11 +319,12 @@
                     last_user_id = current.from_id[0];
                 }else{ // meta message
                     res[date_day].push([current]);
-                    last_user_id = 0;
+                    last_user_id = -1;
                 }
             });
-            // add the url of the avatar for all users in the conversation
-            var users = this.get("session").users;
+            // add the url of the avatar for all users in the conversation (+ add the anonymous user)
+            var users = _.clone(this.get("session").users);
+            users.push({"im_status":"online", "id":0, "name":this.options["defaultUsername"]});
             _.each(users, function(user){
                 user['avatar_url'] = openerp.session.url('/im/image', {uuid: self.get('session').uuid, user_id: user.id});
             });
@@ -352,7 +362,7 @@
             this.$(".oe_im_chatview_content").scrollTop(this.$(".oe_im_chatview_content").get(0).scrollHeight);
         },
         add_user: function(user){
-            return new openerp.web.Model("im_chat.session").call("add_user", [this.get("session").uuid , user.id]);
+            return new openerp.Model("im_chat.session").call("add_user", [this.get("session").uuid , user.id]);
         },
         focus: function() {
             this.$(".oe_im_chatview_input").focus();
@@ -445,7 +455,7 @@
                     self.c_manager.on_notification(notif);
                 });
                 // start polling
-                //openerp.im.bus.poll();
+                openerp.im.bus.start_polling();
             });
             return;
         },

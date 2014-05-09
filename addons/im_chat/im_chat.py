@@ -230,7 +230,7 @@ class im_chat_message(osv.Model):
             # save it
             message_id = self.create(cr, openerp.SUPERUSER_ID, vals, context=context)
             # broadcast it to channel (anonymous users) and users_ids
-            data = self.read(cr, uid, [message_id], ['from_id','to_id','create_date','type','message'], context=context)[0]
+            data = self.read(cr, openerp.SUPERUSER_ID, [message_id], ['from_id','to_id','create_date','type','message'], context=context)[0]
             notifications.append([uuid, data])
             for user in session.user_ids:
                 notifications.append([(cr.dbname, 'im_chat.session', user.id), data])
@@ -338,7 +338,6 @@ class res_users(osv.Model):
             tmp = filter(lambda p: p['user_id'][0] == user_id[0], presences)
             user['im_status'] = len(tmp) > 0 and tmp[0]['status'] or 'offline'
             res.append(user)
-        print "###### im_search : ", res
         return res
 
 # vim:et:
