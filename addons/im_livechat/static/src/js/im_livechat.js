@@ -62,7 +62,7 @@
             if (! this.manager) {
                 this.manager = new openerp.im_chat.ConversationManager(this, this.options);
                 this.manager.set("bottom_offset", 37);
-                // overwrite the notification default function
+                // override the notification default function
                 this.manager.notification = function(notif){
                     $.achtung({message: notif, timeout: 10, showEffects: false, hideEffects: false});
                 }

@@ -193,7 +193,7 @@
             });
             self.load_history();
             self.$().show();
-            // prepare the header and the correcte state
+            // prepare the header and the correct state
             self.update_session();
         },
         show_hide: function() {
@@ -218,11 +218,10 @@
             if(!this.options["anonymous_mode"]){
                 return new openerp.Model("im_chat.session").call("update_state", [this.get("session").uuid, state]);
             }else{
-                if(state === 'closed'){
-                    this.destroy();
-                }else{
-                    this.show_hide();
-                }
+                // in case of anonymous session, do not allow the closing of the conversation.
+                // If the anonymous received a message in a closed conversation, it is impossible to reopen it !
+                // TODO : crash in received_message
+                this.show_hide();
             }
         },
         calc_pos: function() {
@@ -237,7 +236,7 @@
                     names.push(user.name);
                 }
             });
-            this.$(".oe_im_chatview_header_name").text(names.length ? names.join(", ") : this.get("session").name);
+            this.$(".oe_im_chatview_header_name").text(names.join(", "));
             // update the fold state
             if(this.get("session").state){
                 if(this.get("session").state === 'closed'){
@@ -291,7 +290,7 @@
             // escape the message content and set the timezone
             _.map(messages, function(m){
                 if(!m.from_id){
-                    m.from_id = [0, self.options["defaultUsername"]];
+                    m.from_id = [false, self.options["defaultUsername"]];
                 }
                 m.message = self.escape_keep_url(m.message);
                 m.create_date = Date.parse(m.create_date).setTimezone("UTC").toString("yyyy-dd-MM HH:mm:ss");
@@ -322,9 +321,8 @@
                     last_user_id = -1;
                 }
             });
-            // add the url of the avatar for all users in the conversation (+ add the anonymous user)
+            // add the url of the avatar for all users in the conversation
             var users = _.clone(this.get("session").users);
-            users.push({"im_status":"online", "id":0, "name":this.options["defaultUsername"]});
             _.each(users, function(user){
                 user['avatar_url'] = openerp.session.url('/im/image', {uuid: self.get('session').uuid, user_id: user.id});
             });

@@ -76,28 +76,12 @@ class im_chat_session(osv.Model):
     _order = 'id desc'
     _name = 'im_chat.session'
     _rec_name = 'uuid'
-
-    def _get_fullname(self, cr, uid, ids, fields, arg, context=None):
-        """ built the header of a given session """
-        result = {}
-        sessions = self.pool["im_chat.session"].browse(cr, uid, ids, context=context)
-        for session in sessions:
-            name = []
-            if (uid is not None) and session.name:
-                name.append(session.name)
-            for u in session.user_ids:
-                if u.id != uid:
-                    name.append(u.name)
-            result[session.id] = ', '.join(name)
-        return result
-
     _columns = {
         'uuid': fields.char('UUID', size=50, select=True),
-        'name' : fields.char('Name'),
+        'name' : fields.char('Anonymous Name'),
         'message_ids': fields.one2many('im_chat.message', 'to_id', 'Messages'),
         'user_ids': fields.many2many('res.users', 'im_chat_session_res_users_rel', 'session_id', 'user_id', "Session Users"),
         'session_res_users_rel': fields.one2many('im_chat.session_res_users_rel', 'session_id', 'Relation Session Users'),
-        'fullname' : fields.function(_get_fullname, type="string"),
     }
     _defaults = {
         'uuid': lambda *args: '%s' % uuid.uuid4(),
@@ -112,11 +96,14 @@ class im_chat_session(osv.Model):
 
     def session_info(self, cr, uid, ids, context=None):
         """ get the session info/header of a given session """
-        for session in self.browse(cr, uid, ids, context=context):
+        for session in self.browse(cr, openerp.SUPERUSER_ID, ids, context=context):
             users_infos = self.pool["res.users"].read(cr, openerp.SUPERUSER_ID, [u.id for u in session.user_ids], ['id','name', 'im_status'], context=context)
+            # add the anonymous user
+            if session.name:
+                users_infos.append({'id' : False, 'name': session.name, 'im_status' :'online' })
             return {
                 'uuid': session.uuid,
-                'name': session.fullname,
+                #'name': session.fullname,
                 'users': users_infos,
             }
 
@@ -124,7 +111,7 @@ class im_chat_session(osv.Model):
         """ returns the canonical session between 2 users, create it if needed """
         session_id = False
         if user_to:
-            sids = self.search(cr, uid, [('user_ids','in', user_to),('user_ids', 'in', uid)], context=context, limit=1)
+            sids = self.search(cr, uid, [('user_ids','in', user_to),('user_ids', 'in', [uid])], context=context, limit=1)
             for sess in self.browse(cr, uid, sids, context=context):
                 if len(sess.user_ids) == 2 and sess.is_private():
                     session_id = sess.id
@@ -149,10 +136,11 @@ class im_chat_session(osv.Model):
         for session in self.browse(cr, uid, sids, context=context):
             if user_id not in [u.id for u in session.user_ids]:
                 self.write(cr, uid, [session.id], {'user_ids': [(4, user_id)]}, context=context)
-                # notify the all the channel users
+                # notify the all the channel users and anonymus channel
                 notifications = []
                 for channel_user_id in session.user_ids:
                     notifications.append([(cr.dbname, 'im_chat.session', channel_user_id.id), session.session_info()])
+                notifications.append([session.uuid, session.session_info()])
                 self.pool['im.bus'].sendmany(cr, uid, notifications)
                 # send a message to the conversation
                 user = self.pool['res.users'].read(cr, uid, user_id, ['name'], context=context)
@@ -163,7 +151,7 @@ class im_chat_session(osv.Model):
         #default image
         image_b64 = 'R0lGODlhAQABAIABAP///wAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='
         # get the session
-        session_id = self.pool["im_chat.session"].search(cr, openerp.SUPERUSER_ID, [('uuid','=',uuid), ('user_ids','in', user_id)])
+        session_id = self.pool["im_chat.session"].search(cr, openerp.SUPERUSER_ID, [('uuid','=',uuid), ('user_ids','in',user_id)])
         if session_id:
             # get the image of the user
             res = self.pool["res.users"].read(cr, openerp.SUPERUSER_ID, [user_id], ["image_small"])[0]
