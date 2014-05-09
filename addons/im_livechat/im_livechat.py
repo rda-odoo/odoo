@@ -38,7 +38,6 @@ class LiveChatController(http.Controller):
         info["dbname"] = dbname
         info["channel"] = channel_id
         info["channel_name"] = registry.get('im_livechat.channel').read(cr, uid, channel_id, ['name'], context=context)["name"]
-        print "PAGE", info
         return request.render('im_livechat.support_page', info)
 
     @http.route('/im_livechat/loader/<string:dbname>/<int:channel_id>', type='http', auth='none')
@@ -48,7 +47,6 @@ class LiveChatController(http.Controller):
         info["dbname"] = dbname
         info["channel"] = channel_id
         info["username"] = kwargs.get("username", "Visitor")
-        print "LOADER ", info
         return request.render('im_livechat.loader', info)
 
     @http.route('/im_livechat/get_session', type="json", auth="none")
@@ -164,8 +162,7 @@ class im_livechat_channel(osv.Model):
         channel = self.browse(cr, openerp.SUPERUSER_ID, channel_id, context=context)
         users = []
         for user_id in channel.user_ids:
-            #user = self.pool["res.users"].browse(cr, openerp.SUPERUSER_ID, user_id.id, context=context)
-            if (user_id.im_status == 'connected'):
+            if (user_id.im_status == 'online'):
                 users.append(user_id)
         return users
 
@@ -180,8 +177,7 @@ class im_livechat_channel(osv.Model):
         Session = self.pool["im_chat.session"]
         newid = Session.create(cr, openerp.SUPERUSER_ID, {'user_ids': [(4,user_id)], 'channel_id': channel_id, 'name' : anonymous_name}, context=context)
         session = Session.browse(cr, openerp.SUPERUSER_ID, newid, context=context)
-        header = Session.session_info(cr, uid, session, context=context)
-        return header
+        return session.session_info()
 
     def test_channel(self, cr, uid, channel, context=None):
         if not channel:

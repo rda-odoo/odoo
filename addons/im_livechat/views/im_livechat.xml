@@ -79,6 +79,7 @@
 
         <!-- render the 2 js tags required to launch LiveSupport on a web page -->
         <template id="support_loader" name="All the scripts to launch the LiveSupport">
+            <link t-att-href="'%s/web/css/im_livechat.lib_loader' % (url)" rel="stylesheet"/>
             <script type="text/javascript" t-att-src="'%s/web/js/im_livechat.lib_loader' % (url)" />
             <script type="text/javascript" t-att-src="'%s/im_livechat/loader/%s/%i' % (url, dbname, channel)"></script>
         </template>
@@ -95,22 +96,35 @@
                         inputPlaceholder: "<t t-esc="inputPlaceholder"/>",
                         defaultMessage: "<t t-esc="defaultMessage"/>" || '',
                         auto: window.oe_im_livechat_auto || false,
-                        username: "<t t-esc="username"/>"" || undefined,
+                        defaultUsername: "<t t-esc="username"/>" || undefined,
                     });
             })();
         </template>
 
         <!-- bundle of js files required to launch the LiveSupport on an external website -->
         <template id="lib_loader" name="List of js required for livechat on external web page">
+            <!-- OpenERP minimal lib -->
             <script type="text/javascript" src="/web/static/lib/underscore/underscore.js"></script>
             <script type="text/javascript" src="/web/static/lib/jquery/jquery.js"></script>
             <script type="text/javascript" src="/web/static/lib/qweb/qweb2.js"></script>
             <script type="text/javascript" src="/web/static/src/js/openerpframework.js"></script>
 
+            <!-- Datejs -->
+            <script type="text/javascript" src="/web/static/lib/datejs/globalization/en-US.js"></script>
+            <script type="text/javascript" src="/web/static/lib/datejs/core.js"></script>
+            <script type="text/javascript" src="/web/static/lib/datejs/parser.js"></script>
+            <script type="text/javascript" src="/web/static/lib/datejs/sugarpak.js"></script>
+            <script type="text/javascript" src="/web/static/lib/datejs/extras.js"></script>
+
+            <!-- IM module -->
             <script type="text/javascript" src="/im/static/src/js/im.js"></script>
             <script type="text/javascript" src="/im_chat/static/src/js/im_chat.js"></script>
-            <script type="text/javascript" src="/im_livechat/static/src/js/im_livechat.js"></script>
             <script type="text/javascript" src="/im_livechat/static/lib/jquery-achtung/src/ui.achtung.js"></script>
+            <script type="text/javascript" src="/im_livechat/static/src/js/im_livechat.js"></script>
+
+            <!-- CSS -->
+            <link rel="stylesheet" href="/im_chat/static/src/css/im_common.css"></link>
+            <link rel="stylesheet" href="/im_livechat/static/lib/jquery-achtung/src/ui.achtung.css"></link>
         </template>
 
     </data>
