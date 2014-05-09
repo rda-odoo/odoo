@@ -10,6 +10,9 @@
             this.activated = true;
             this.channels = [];
             this.last = 0;
+            if(!openerp.session){
+                 openerp.session = new openerp.Session();
+            }
         },
         poll: function() {
             var self = this;
