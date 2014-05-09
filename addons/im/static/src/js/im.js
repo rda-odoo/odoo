@@ -15,6 +15,8 @@
             var self = this;
             self.activated = true;
             var data = {'channels': self.channels, 'last': self.last, 'options' : self.options};
+            console.log("POLL ", data);
+            console.log(openerp);
             openerp.session.rpc("/longpolling/poll", data, {shadow: true}).then(function(result) {
                 _.each(result, _.bind(self.on_notification, self));
                 self.poll();
