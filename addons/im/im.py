@@ -1,21 +1,21 @@
 # -*- coding: utf-8 -*-
-import base64
 import datetime
 import json
 import logging
 import select
 import threading
 import time
+import random
 
 import simplejson
 import openerp
 from openerp.osv import osv, fields
 from openerp.http import request
+from openerp.tools.misc import DEFAULT_SERVER_DATETIME_FORMAT
 
 _logger = logging.getLogger(__name__)
 
 TIMEOUT = 50
-TIMEOUT = 15
 
 """
 openerp.jsonRpc('/longpolling/poll','call',{"channels":["c1"],last:0}).then(function(r){console.log(r)});
@@ -27,12 +27,12 @@ openerp.jsonRpc('/longpolling/send','call',{"channel":"c2","message":"m2"}).then
 # Bus
 #----------------------------------------------------------
 def json_dump(v):
-    return simplejson.dumps(v ,separators=(',', ':'))
+    return simplejson.dumps(v, separators=(',', ':'))
 
 def hashable(key):
     if isinstance(key, list):
         key = tuple(key)
-        return key
+    return key
 
 class ImBus(osv.Model):
     _name = 'im.bus'
@@ -43,19 +43,23 @@ class ImBus(osv.Model):
         'message' : fields.char('Message'),
     }
 
+    def gc(self, cr, uid):
+        timeout_ago = datetime.datetime.now()-datetime.timedelta(seconds=TIMEOUT*2)
+        domain = [('create_date', '<', timeout_ago.strftime(DEFAULT_SERVER_DATETIME_FORMAT))]
+        ids  = self.search(cr, uid, domain)
+        self.unlink(cr, uid, ids)
+
     def sendmany(self, cr, uid, notifications):
         channels = set()
         for channel, message in notifications:
             channels.add(channel)
             values = {
-                "channel" : simplejson.dumps(channel),
-                "message" : simplejson.dumps(message)
+                "channel" : json_dump(channel),
+                "message" : json_dump(message)
             }
-            self.pool['im.bus'].create(cr, openerp.SUPERUSER_ID, values)
-            # TODO gcstatus
-            #if random.random() < 0.001:
-            # ids self.search(cr, uid, [create_date < now-TIMEOUT*2])
-            # self.unlink(ids)
+            self.pool['im.bus'].create(cr, uid, values)
+            if random.random() < 0.01:
+                self.gc(cr, uid)
         if channels:
             with openerp.sql_db.db_connect('postgres').cursor() as cr2:
                 cr2.execute("notify imbus, %s", (json_dump(list(channels)),))
@@ -63,11 +67,15 @@ class ImBus(osv.Model):
     def sendone(self, cr, uid, channel, message):
         self.sendmany(cr, uid, [[channel, message]])
 
-    def poll(self, cr, uid, channels, last):
+    def poll(self, cr, uid, channels, last=0):
+        # first polll returns the last_id
+        if last == 0:
+            cr.execute('SELECT COALESCE(MAX(id),0)+1 FROM ' + self._table)
+            return [{'id': cr.fetchone()[0]}]
+        # else returns the unread notifications
         channels = [json_dump(c) for c in channels]
         domain = [('id','>',last), ('channel','in',channels)]
-        ids = self.search(cr, uid, domain)
-        notifications = self.read(cr, uid, ids)
+        notifications = self.search_read(cr, uid, domain)
         return notifications
 
 class ImDispatch(object):
@@ -85,18 +93,16 @@ class ImDispatch(object):
 
         # immediatly returns if past notifications exist
         with registry.cursor() as cr:
-            notifications = registry['im.bus'].poll(cr, 1, channels, last)
-
+            notifications = registry['im.bus'].poll(cr, openerp.SUPERUSER_ID, channels, last)
         # or wait for future ones
         if not notifications:
             event = self.Event()
             for c in channels:
                 self.channels.setdefault(hashable(c), []).append(event)
             try:
-                print "Bus.poll", threading.current_thread(), channels
                 event.wait(timeout=timeout)
                 with registry.cursor() as cr:
-                    notifications = registry['im.bus'].poll(cr, 1, channels, last)
+                    notifications = registry['im.bus'].poll(cr, openerp.SUPERUSER_ID, channels, last)
             except Exception:
                 # timeout
                 pass

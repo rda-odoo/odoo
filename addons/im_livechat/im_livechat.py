@@ -19,64 +19,40 @@
 #
 ##############################################################################
 
-import json
 import random
-import jinja2
 
 import openerp
 import openerp.addons.im_chat.im_chat
 from openerp.osv import osv, fields
 from openerp import tools
 from openerp import http
+from openerp.http import request
 
-
-env = jinja2.Environment(
-    loader=jinja2.PackageLoader('openerp.addons.im_livechat', "."),
-    autoescape=False
-)
-env.filters["json"] = json.dumps
 
 class LiveChatController(http.Controller):
 
-    def _auth(self, db):
-        reg = openerp.modules.registry.RegistryManager.get(db)
-        uid = request.uid
-        return reg, uid
+    @http.route('/im_livechat/support/<string:dbname>/<int:channel_id>', type='http', auth='none')
+    def support_page(self, dbname, channel_id, **kwargs):
+        registry, cr, uid, context = openerp.modules.registry.RegistryManager.get(dbname), request.cr, request.uid, request.context
+        info = registry.get('im_livechat.channel').get_info_for_chat_src(cr, uid, channel_id)
+        info["dbname"] = dbname
+        info["channel"] = channel_id
+        info["channel_name"] = registry.get('im_livechat.channel').read(cr, uid, channel_id, ['name'], context=context)["name"]
+        return request.render('im_livechat.support_page', info)
 
-    @http.route('/im_livechat/loader', auth="none")
-    def loader(self, **kwargs):
-        p = json.loads(kwargs["p"])
-        db = p["db"]
-        channel = p["channel"]
-        user_name = p.get("user_name", "Visitor")
-        reg, uid = self._auth(db)
-        with reg.cursor() as cr:
-            info = reg.get('im_livechat.channel').get_info_for_chat_src(cr, uid, channel)
-            info["db"] = db
-            info["channel"] = channel
-            info["username"] = user_name
-            return request.make_response(env.get_template("loader.js").render(info),
-                 headers=[('Content-Type', "text/javascript")])
-
-    @http.route('/im_livechat/web_page', auth="none")
-    def web_page(self, **kwargs):
-        rquenset.render('testapage')
-        p = json.loads(kwargs["p"])
-        db = p["db"]
-        channel = p["channel"]
-        reg, uid = self._auth(db)
-        with reg.cursor() as cr:
-            script = reg.get('im_livechat.channel').read(cr, uid, channel, ["script"])["script"]
-            info = reg.get('im_livechat.channel').get_info_for_chat_src(cr, uid, channel)
-            info["script"] = script
-            return request.make_response(env.get_template("web_page.html").render(info), 
-                headers=[('Content-Type', "text/html")])
+    @http.route('/im_livechat/loader/<string:dbname>/<int:channel_id>', type='http', auth='none')
+    def loader(self, dbname, channel_id, **kwargs):
+        registry, cr, uid, context = openerp.modules.registry.RegistryManager.get(dbname), request.cr, request.uid, request.context
+        info = registry.get('im_livechat.channel').get_info_for_chat_src(cr, uid, channel_id)
+        info["dbname"] = dbname
+        info["channel"] = channel_id
+        info["username"] = kwargs.get("username", "Visitor")
+        return request.render('im_livechat.loader', info)
 
     @http.route('/im_livechat/get_session', type="json", auth="none")
     def get_session(self, channel_id, anonymous_name):
         cr, uid, context, db = request.cr, request.uid, request.context, request.db
         reg = openerp.modules.registry.RegistryManager.get(db)
-
         # add the location to the anonymous name
         ip = request.httprequest.environ['REMOTE_ADDR']
         try:
@@ -87,15 +63,16 @@ class LiveChatController(http.Controller):
                 anonymous_name = anonymous_name + " ("+result["country_name"]+")"
         except Exception:
             pass
-            
         session = reg.get("im_livechat.channel").get_channel_session(cr, uid, channel_id, anonymous_name, context=context)
         return session
 
     @http.route('/im_livechat/available', type='json', auth="none")
     def available(self, db, channel):
-        reg, uid = self._auth(db)
+        cr, uid, context, db = request.cr, request.uid, request.context, request.db
+        reg = openerp.modules.registry.RegistryManager.get(db)
         with reg.cursor() as cr:
             return len(reg.get('im_livechat.channel').get_available_users(cr, uid, channel)) > 0
+
 
 class im_livechat_channel(osv.Model):
     _name = 'im_livechat.channel'
@@ -122,19 +99,21 @@ class im_livechat_channel(osv.Model):
         return res
 
     def _script(self, cr, uid, ids, name, arg, context=None):
+        values = {
+            "url": self.pool.get('ir.config_parameter').get_param(cr, uid, 'web.base.url'),
+            "dbname":cr.dbname
+        }
         res = {}
         for record in self.browse(cr, uid, ids, context=context):
-            res[record.id] = env.get_template("include.html").render({
-                "url": self.pool.get('ir.config_parameter').get_param(cr, uid, 'web.base.url'),
-                "parameters": {"db":cr.dbname, "channel":record.id},
-            })
+            values["channel"] = record.id
+            res[record.id] = self.pool['ir.ui.view'].render(cr, uid, 'im_livechat.support_loader', values, context=context)
         return res
 
     def _web_page(self, cr, uid, ids, name, arg, context=None):
         res = {}
         for record in self.browse(cr, uid, ids, context=context):
             res[record.id] = self.pool.get('ir.config_parameter').get_param(cr, uid, 'web.base.url') + \
-                "/im_livechat/web_page?p=" + json.dumps({"db":cr.dbname, "channel":record.id})
+                "/im_livechat/support/%s/%i" % (cr.dbname, record.id)
         return res
 
     _columns = {
@@ -183,8 +162,7 @@ class im_livechat_channel(osv.Model):
         channel = self.browse(cr, openerp.SUPERUSER_ID, channel_id, context=context)
         users = []
         for user_id in channel.user_ids:
-            #user = self.pool["res.users"].browse(cr, openerp.SUPERUSER_ID, user_id.id, context=context)
-            if (user_id.im_status == 'connected'):
+            if (user_id.im_status == 'online'):
                 users.append(user_id)
         return users
 
@@ -199,8 +177,7 @@ class im_livechat_channel(osv.Model):
         Session = self.pool["im_chat.session"]
         newid = Session.create(cr, openerp.SUPERUSER_ID, {'user_ids': [(4,user_id)], 'channel_id': channel_id, 'name' : anonymous_name}, context=context)
         session = Session.browse(cr, openerp.SUPERUSER_ID, newid, context=context)
-        header = Session.session_info(cr, uid, session, context=context)
-        return header
+        return session.session_info()
 
     def test_channel(self, cr, uid, channel, context=None):
         if not channel:

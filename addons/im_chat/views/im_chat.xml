@@ -3,7 +3,7 @@
 -->
 <openerp>
     <data>
-        <template id="assets_backend" name="im assets" inherit_id="web.assets_backend">
+        <template id="assets_backend" name="im_chat assets" inherit_id="web.assets_backend">
             <xpath expr="." position="inside">
                 <link rel="stylesheet" href="/im_chat/static/src/css/im_common.css"/>
                 <link rel="stylesheet" href="/im_chat/static/src/css/im_chat.css"/>
