@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import base64
 import datetime
+import logging
 import time
 import uuid
 import random
@@ -12,6 +13,8 @@ from openerp.http import request
 from openerp.osv import osv, fields
 from openerp.tools.misc import DEFAULT_SERVER_DATETIME_FORMAT
 from openerp.addons.im.im import TIMEOUT
+
+_logger = logging.getLogger(__name__)
 
 DISCONNECTION_TIMER = TIMEOUT + 5
 AWAY_TIMER = 600 # 10 minutes
@@ -78,7 +81,7 @@ class im_chat_session(osv.Model):
     _rec_name = 'uuid'
     _columns = {
         'uuid': fields.char('UUID', size=50, select=True),
-        'name' : fields.char('Anonymous Name'),
+        'name' : fields.char('Name'),
         'message_ids': fields.one2many('im_chat.message', 'to_id', 'Messages'),
         'user_ids': fields.many2many('res.users', 'im_chat_session_res_users_rel', 'session_id', 'user_id', "Session Users"),
         'session_res_users_rel': fields.one2many('im_chat.session_res_users_rel', 'session_id', 'Relation Session Users'),
@@ -98,14 +101,18 @@ class im_chat_session(osv.Model):
         """ get the session info/header of a given session """
         for session in self.browse(cr, openerp.SUPERUSER_ID, ids, context=context):
             users_infos = self.pool["res.users"].read(cr, openerp.SUPERUSER_ID, [u.id for u in session.user_ids], ['id','name', 'im_status'], context=context)
-            # add the anonymous user
-            if session.name:
-                users_infos.append({'id' : False, 'name': session.name, 'im_status' :'online' })
-            return {
+            info = {
                 'uuid': session.uuid,
-                #'name': session.fullname,
+                'name': session.name,
                 'users': users_infos,
+                'state': 'open',
             }
+            # add uid_state if available
+            domain = [('user_id','=',uid), ('session_id','=',session.id)]
+            uid_state = self.pool['im_chat.session_res_users_rel'].search_read(cr, openerp.SUPERUSER_ID, domain, ['state'], context=context)
+            if uid_state:
+                info['state'] = uid_state[0]['state']
+            return info
 
     def session_get(self, cr, uid, user_to, context=None):
         """ returns the canonical session between 2 users, create it if needed """
@@ -122,13 +129,11 @@ class im_chat_session(osv.Model):
 
     def update_state(self, cr, uid, uuid, state, context=None):
         """ modify the fold_state of the given session, and broadcast to himself (e.i. : to sync multiple tabs) """
-        session_rel_ids = self.pool['im_chat.session_res_users_rel'].search(cr, openerp.SUPERUSER_ID, [('user_id','=',uid), ('session_id.uuid','=',uuid)], context=context)
-        self.pool['im_chat.session_res_users_rel'].write(cr, uid, session_rel_ids, {'state': state}, context=context)
-        session_rel = self.pool['im_chat.session_res_users_rel'].browse(cr, uid, session_rel_ids, context=context)
-        session = self.browse(cr, uid, session_rel[0].session_id.id, context=context)
-        info = session.session_info()
-        info['state'] = state
-        self.pool['im.bus'].sendone(cr, uid, (cr.dbname, 'im_chat.session', uid), info)
+        domain = [('user_id','=',uid), ('session_id.uuid','=',uuid)]
+        ids = self.pool['im_chat.session_res_users_rel'].search(cr, uid, domain, context=context)
+        self.pool['im_chat.session_res_users_rel'].write(cr, uid, ids, {'state': state}, context=context)
+        for sr in self.pool['im_chat.session_res_users_rel'].browse(cr, uid, ids, context=context):
+            self.pool['im.bus'].sendone(cr, uid, (cr.dbname, 'im_chat.session', uid), sr.session_id.session_info())
 
     def add_user(self, cr, uid, uuid, user_id, context=None):
         """ add the given user to the given session """
@@ -139,8 +144,10 @@ class im_chat_session(osv.Model):
                 # notify the all the channel users and anonymus channel
                 notifications = []
                 for channel_user_id in session.user_ids:
-                    notifications.append([(cr.dbname, 'im_chat.session', channel_user_id.id), session.session_info()])
-                notifications.append([session.uuid, session.session_info()])
+                    info = self.session_info(cr, channel_user_id.id, [session.id])
+                    notifications.append([(cr.dbname, 'im_chat.session', channel_user_id.id), info])
+                info = self.session_info(cr, None, [session.id])
+                notifications.append([session.uuid, info])
                 self.pool['im.bus'].sendmany(cr, uid, notifications)
                 # send a message to the conversation
                 user = self.pool['res.users'].read(cr, uid, user_id, ['name'], context=context)
@@ -151,7 +158,7 @@ class im_chat_session(osv.Model):
         #default image
         image_b64 = 'R0lGODlhAQABAIABAP///wAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='
         # get the session
-        session_id = self.pool["im_chat.session"].search(cr, openerp.SUPERUSER_ID, [('uuid','=',uuid), ('user_ids','in',user_id)])
+        session_id = self.pool["im_chat.session"].search(cr, openerp.SUPERUSER_ID, [('uuid','=',uuid), ('user_ids','in', user_id)])
         if session_id:
             # get the image of the user
             res = self.pool["res.users"].read(cr, openerp.SUPERUSER_ID, [user_id], ["image_small"])[0]
@@ -187,8 +194,8 @@ class im_chat_message(osv.Model):
         messages = self.search_read(cr, uid, domain, ['from_id','to_id','create_date','type','message'], order='id asc', context=context)
         # get the session of the messages
         session_ids = map(lambda m: m['to_id'][0], messages)
-        domain = [('user_id','=',uid), '|', ('state','!=','closed'), ('session_id', 'in', session_ids)]
 
+        domain = [('user_id','=',uid), '|', ('state','!=','closed'), ('session_id', 'in', session_ids)]
         session_rels_ids = self.pool['im_chat.session_res_users_rel'].search(cr, uid, domain, context=context)
         session_rels = self.pool['im_chat.session_res_users_rel'].browse(cr, uid, session_rels_ids, context=context)
 
@@ -313,7 +320,6 @@ class res_users(osv.Model):
         """ search users with a name and return its id, name and im_status """
         group_user_id = self.pool.get("ir.model.data").get_object_reference(cr, uid, 'base', 'group_user')[1]
         user_ids = self.name_search(cr, uid, name, [('id','!=', uid), ('groups_id', 'in', [group_user_id])], limit=limit, context=context)
-        # TODO make this work
         domain = [('user_id', 'in', [i[0] for i in user_ids])]
         ids = self.pool['im_chat.presence'].search(cr, uid, domain, order="last_poll desc", context=context)
         presences = self.pool['im_chat.presence'].read(cr, uid, ids, ['user_id','status'], context=context)

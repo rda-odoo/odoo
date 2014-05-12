@@ -43,6 +43,12 @@ class ImBus(osv.Model):
         'message' : fields.char('Message'),
     }
 
+    def gc(self, cr, uid):
+        timeout_ago = datetime.datetime.now()-datetime.timedelta(seconds=TIMEOUT*2)
+        domain = [('create_date', '<', timeout_ago.strftime(DEFAULT_SERVER_DATETIME_FORMAT))]
+        ids  = self.search(cr, uid, domain)
+        self.unlink(cr, uid, ids)
+
     def sendmany(self, cr, uid, notifications):
         channels = set()
         for channel, message in notifications:
@@ -51,11 +57,9 @@ class ImBus(osv.Model):
                 "channel" : json_dump(channel),
                 "message" : json_dump(message)
             }
-            self.pool['im.bus'].create(cr, openerp.SUPERUSER_ID, values)
-            # gc : remove old queued messages
-            if random.random() < 0.001:
-                ids  = self.search(cr, openerp.SUPERUSER_ID, [('create_date', '<', (datetime.datetime.now()-datetime.timedelta(seconds=(TIMEOUT*2))).strftime(DEFAULT_SERVER_DATETIME_FORMAT))])
-                self.unlink(cr, openerp.SUPERUSER_ID, ids)
+            self.pool['im.bus'].create(cr, uid, values)
+            if random.random() < 0.01:
+                self.gc(cr, uid)
         if channels:
             with openerp.sql_db.db_connect('postgres').cursor() as cr2:
                 cr2.execute("notify imbus, %s", (json_dump(list(channels)),))
@@ -63,20 +67,16 @@ class ImBus(osv.Model):
     def sendone(self, cr, uid, channel, message):
         self.sendmany(cr, uid, [[channel, message]])
 
-    def poll(self, cr, uid, channels, last):
-        # initialize the first poll : avoid to load all the messages of the im_bus queue
-        # it returns an empty notification (with only the last_id)
-        if(last == 0):
-            cr.execute('select max(id) from ' + self._table)
-            last_id = cr.fetchone()[0] or 0
-            return [(last_id, "im_bus", "")]
+    def poll(self, cr, uid, channels, last=0):
+        # first polll returns the last_id
+        if last == 0:
+            cr.execute('SELECT COALESCE(MAX(id),0)+1 FROM ' + self._table)
+            return [{'id': cr.fetchone()[0]}]
         # else returns the unread notifications
         channels = [json_dump(c) for c in channels]
-        domain = [('id','>',last), ('channel','in', channels)]
-        ids = self.search(cr, openerp.SUPERUSER_ID, domain)
-        notifications = self.browse(cr, uid, ids)
-        return [(notif.id, simplejson.loads(notif.channel), simplejson.loads(notif.message)) for notif in notifications]
-
+        domain = [('id','>',last), ('channel','in',channels)]
+        notifications = self.search_read(cr, uid, domain)
+        return notifications
 
 class ImDispatch(object):
     def __init__(self):
