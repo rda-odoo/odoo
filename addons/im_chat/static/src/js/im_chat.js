@@ -307,6 +307,8 @@
             var res = {};
             var last_date_day, last_user_id = -1;
             _.each(this.get("messages"), function(current){
+                // add the url of the avatar for all users in the conversation
+                current.from_id[2] = openerp.session.url('/im/image', {uuid: self.get('session').uuid, user_id: current.from_id[0]});
                 var date_day = current.create_date.split(" ")[0];
                 if(date_day !== last_date_day){
                     res[date_day] = [];
@@ -325,13 +327,8 @@
                     last_user_id = -1;
                 }
             });
-            // add the url of the avatar for all users in the conversation
-            var users = _.clone(this.get("session").users);
-            _.each(users, function(user){
-                user['avatar_url'] = openerp.session.url('/im/image', {uuid: self.get('session').uuid, user_id: user.id});
-            });
             // render and set the content of the chatview
-            this.$('.oe_im_chatview_content_bubbles').html($(openerp.qweb.render("im_chat.Conversation_content", {"list": res, "users" : _.indexBy(users, 'id')})));
+            this.$('.oe_im_chatview_content_bubbles').html($(openerp.qweb.render("im_chat.Conversation_content", {"list": res})));
         },
         keydown: function(e) {
             if(e && e.which !== 13) {

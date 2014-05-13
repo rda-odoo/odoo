@@ -25,7 +25,7 @@ AWAY_TIMER = 600 # 10 minutes
 class Controller(openerp.addons.im.im.Controller):
     def _poll(self, dbname, channels, last, options):
         if request.session.uid:
-            registry, cr, uid, context = request.registry, request.cr, request.uid, request.context
+            registry, cr, uid, context = request.registry, request.cr, request.session.uid, request.context
             registry.get('im_chat.presence').update(cr, uid, ('im_presence' in options), context=context)
             cr.commit()
             # listen to connection and disconnections
@@ -34,25 +34,25 @@ class Controller(openerp.addons.im.im.Controller):
             channels.append((request.db,'im_chat.session', request.uid))
         return super(Controller, self)._poll(dbname, channels, last, options)
 
-    @openerp.http.route('/im/init', type="json", auth="public")
+    @openerp.http.route('/im/init', type="json", auth="none")
     def init(self):
-        registry, cr, uid, context = request.registry, request.cr, request.uid, request.context
+        registry, cr, uid, context = request.registry, request.cr, request.session.uid, request.context
         notifications = registry['im_chat.message'].init_messages(cr, uid, context=context)
         return notifications
 
-    @openerp.http.route('/im/post', type="json", auth="public")
+    @openerp.http.route('/im/post', type="json", auth="none")
     def post(self, uuid, message_type, message_content):
-        registry, cr, uid, context = request.registry, request.cr, request.uid, request.context
-        print "############################### post : ", uid
-        message_id = registry["im_chat.message"].post(cr, uid, uuid, message_type, message_content, context=context)
+        registry, cr, uid, context = request.registry, request.cr, request.session.uid, request.context
+        # execute the post method as SUPERUSER_ID
+        message_id = registry["im_chat.message"].post(cr, openerp.SUPERUSER_ID, uid, uuid, message_type, message_content, context=context)
         return message_id
 
-    @openerp.http.route('/im/image', type='http', auth="public")
+    @openerp.http.route('/im/image', type='http', auth="none")
     def image(self, uuid, user_id):
-        registry, cr, context, uid = request.registry, request.cr, request.context, request.uid
+        registry, cr, context, uid = request.registry, request.cr, request.context, request.session.uid
         # get the image
         Session = registry.get("im_chat.session")
-        image_b64 = Session.get_image(cr, uid, uuid, simplejson.loads(user_id), context)
+        image_b64 = Session.get_image(cr, openerp.SUPERUSER_ID, uuid, simplejson.loads(user_id), context)
         # built the response
         image_data = base64.b64decode(image_b64)
         headers = [('Content-Type', 'image/png')]
@@ -100,19 +100,23 @@ class im_chat_session(osv.Model):
 
     def session_info(self, cr, uid, ids, context=None):
         """ get the session info/header of a given session """
-        for session in self.browse(cr, openerp.SUPERUSER_ID, ids, context=context):
-            users_infos = self.pool["res.users"].read(cr, openerp.SUPERUSER_ID, [u.id for u in session.user_ids], ['id','name', 'im_status'], context=context)
+        for session in self.browse(cr, uid, ids, context=context):
+            users_infos = self.pool["res.users"].read(cr, uid, [u.id for u in session.user_ids], ['id','name', 'im_status'], context=context)
             info = {
                 'uuid': session.uuid,
                 'name': session.name,
                 'users': users_infos,
                 'state': 'open',
             }
+            print "########## sessino_info as ", uid
+            print info
             # add uid_state if available
             domain = [('user_id','=',uid), ('session_id','=',session.id)]
-            uid_state = self.pool['im_chat.session_res_users_rel'].search_read(cr, openerp.SUPERUSER_ID, domain, ['state'], context=context)
+            uid_state = self.pool['im_chat.session_res_users_rel'].search_read(cr, uid, domain, ['state'], context=context)
+            print domain
+            print uid_state
             if uid_state:
-                info['state'] = uid_state[0]['state']
+                info['state'] = uid_state[0]['state'] or 'open' # because the default value of im_chat_session_res_users_rel is not set
             return info
 
     def session_get(self, cr, uid, user_to, context=None):
@@ -147,9 +151,9 @@ class im_chat_session(osv.Model):
                 for channel_user_id in session.user_ids:
                     info = self.session_info(cr, channel_user_id.id, [session.id])
                     notifications.append([(cr.dbname, 'im_chat.session', channel_user_id.id), info])
-                    # TODO make it work !!
-                #info = self.session_info(cr, None, [session.id], context=context)
-                #notifications.append([session.uuid, info])
+            # TODO make it work !!
+            #info = self.session_info(cr, None, [session.id], context=context)
+            #notifications.append([session.uuid, info])
                 self.pool['im.bus'].sendmany(cr, uid, notifications)
                 # send a message to the conversation
                 user = self.pool['res.users'].read(cr, uid, user_id, ['name'], context=context)
@@ -163,7 +167,7 @@ class im_chat_session(osv.Model):
         session_id = self.pool["im_chat.session"].search(cr, uid, [('uuid','=',uuid), ('user_ids','in', user_id)])
         if session_id:
             # get the image of the user
-            res = self.pool["res.users"].read(cr, openerp.SUPERUSER_ID, [user_id], ["image_small"])[0]
+            res = self.pool["res.users"].read(cr, uid, [user_id], ["image_small"])[0]
             image_b64 = res["image_small"]
         return image_b64
 
@@ -189,6 +193,7 @@ class im_chat_message(osv.Model):
         """ get unread messages and old messages received less than AWAY_TIMER
             ago and the session_info for open or folded window
         """
+        print "############### init message :", uid
         threshold = datetime.datetime.now() - datetime.timedelta(seconds=AWAY_TIMER)
         threshold = threshold.strftime(DEFAULT_SERVER_DATETIME_FORMAT)
 
@@ -210,24 +215,25 @@ class im_chat_message(osv.Model):
             notifications.append([(cr.dbname,'im_chat.session', uid), m])
         return notifications
 
-    def post(self, cr, uid, uuid, message_type, message_content, context=None):
+    def post(self, cr, uid, from_uid, uuid, message_type, message_content, context=None):
         """ post and broadcast a message, return the message id """
+        print "########## POST from_uid ", from_uid, " as ", uid
         message_id = False
         Session = self.pool['im_chat.session']
-        session_ids = Session.search(cr, openerp.SUPERUSER_ID, [('uuid','=',uuid)], context=context)
+        session_ids = Session.search(cr, uid, [('uuid','=',uuid)], context=context)
         notifications = []
-        for session in Session.browse(cr, openerp.SUPERUSER_ID, session_ids, context=context):
+        for session in Session.browse(cr, uid, session_ids, context=context):
             # build the new message
             vals = {
-                "from_id": uid,
+                "from_id": from_uid,
                 "to_id": session.id,
                 "type": message_type,
                 "message": message_content,
             }
             # save it
-            message_id = self.create(cr, openerp.SUPERUSER_ID, vals, context=context)
+            message_id = self.create(cr, uid, vals, context=context)
             # broadcast it to channel (anonymous users) and users_ids
-            data = self.read(cr, openerp.SUPERUSER_ID, [message_id], ['from_id','to_id','create_date','type','message'], context=context)[0]
+            data = self.read(cr, uid, [message_id], ['from_id','to_id','create_date','type','message'], context=context)[0]
             notifications.append([uuid, data])
             for user in session.user_ids:
                 notifications.append([(cr.dbname, 'im_chat.session', user.id), data])

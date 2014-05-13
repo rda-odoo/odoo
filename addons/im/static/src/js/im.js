@@ -25,7 +25,7 @@
                 _.each(result, _.bind(self.on_notification, self));
                 self.poll();
             }, function(unused, e) {
-                e.preventDefault();
+                //e.preventDefault();
                 setTimeout(_.bind(self.poll, self), im.ERROR_DELAY);
             });
         },

@@ -21,10 +21,10 @@
 import openerp
 import logging
 import simplejson
+import openerp.addons.im.im
 
 from openerp.osv import osv, fields
 from openerp.http import request
-from openerp.addons.im.im import bus
 
 _logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ class Controller(openerp.addons.im.im.Controller):
     @openerp.http.route('/im_screenshare/share', type="json", auth="none")
     def share(self, uuid, message):
         registry, cr, context, uid = request.registry, request.cr, request.context, request.session.uid
-        return bus.sendone(cr, (request.cr.dbname,'im_screenshare', uuid), message)
+        return self.pool['im.bus'].sendone(cr, (request.cr.dbname,'im_screenshare', uuid), message)
 
     @openerp.http.route(['/im_screenshare/player/<string:uuid>','/im_screenshare/player/<int:id>/<string:dbname>'], type='http', auth='none')
     def player(self, uuid=None, id=None, dbname=None):

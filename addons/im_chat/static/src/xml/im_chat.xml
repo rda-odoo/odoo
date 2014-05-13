@@ -27,13 +27,11 @@
             <t t-if="bubble[0].type === 'message'">
                 <t t-call="im_chat.Conversation_message_bubble">
                     <t t-set="messages" t-value="bubble"/>
-                    <t t-set="user" t-value="users[bubble[0].from_id[0]]"/>
                 </t>
             </t>
             <t t-if="bubble[0].type === 'meta'">
                 <t t-call="im_chat.Conversation_technical_bubble">
                     <t t-set="messages" t-value="bubble"/>
-                    <t t-set="user" t-value="users[bubble[0].from_id[0]]"/>
                 </t>
             </t>
         </t>
@@ -42,7 +40,7 @@
 <t t-name="im_chat.Conversation_message_bubble">
     <div class="oe_im_chatview_message_bubble">
         <div class="oe_im_chatview_clip">
-            <img class="oe_im_chatview_avatar" t-att-src="user.avatar_url"/>
+            <img class="oe_im_chatview_avatar" t-att-src="_.last(messages).from_id[2]"/>
         </div>
         <div class="oe_im_chatview_from"><t t-esc="_.last(messages).from_id[1]"/></div>
         <div class="oe_im_chatview_bubble_list">
