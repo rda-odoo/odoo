@@ -76,7 +76,7 @@ class ImBus(osv.Model):
         channels = [json_dump(c) for c in channels]
         domain = [('id','>',last), ('channel','in',channels)]
         notifications = self.search_read(cr, uid, domain)
-        return notifications
+        return [{"id":notif["id"], "channel": simplejson.loads(notif["channel"]), "message":simplejson.loads(notif["message"])} for notif in notifications]
 
 class ImDispatch(object):
     def __init__(self):
@@ -161,7 +161,7 @@ dispatch = ImDispatch().start()
 # Controller
 #----------------------------------------------------------
 class Controller(openerp.http.Controller):
-    @openerp.http.route('/longpolling/send', type="json", auth="none")
+    @openerp.http.route('/longpolling/send', type="json", auth="public")
     def send(self, channel, message):
         if not isinstance(channel, basestring):
             raise Exception("im.Bus only string channels are allowed.")
@@ -173,7 +173,7 @@ class Controller(openerp.http.Controller):
         # TODO close request.cr
         return dispatch.poll(dbname, channels, last)
 
-    @openerp.http.route('/longpolling/poll', type="json", auth="none")
+    @openerp.http.route('/longpolling/poll', type="json", auth="public")
     def poll(self, channels, last, options=None):
         if options is None:
             options = {}

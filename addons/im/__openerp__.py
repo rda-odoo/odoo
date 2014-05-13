@@ -8,5 +8,6 @@
     'depends': ['base', 'web'],
     'data': [
         'views/im.xml',
+        'security/ir.model.access.csv',
     ],
 }

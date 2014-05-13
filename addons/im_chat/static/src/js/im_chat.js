@@ -47,10 +47,14 @@
             var message = notification[1];
             var regex_uuid = new RegExp(/(\w{8}(-\w{4}){3}-\w{12}?)/g);
 
+            console.log(JSON.stringify(notification));
+
+
             // Concern im_chat : if the channel is the im_chat.session or im_chat.status, or a 'private' channel (aka the UUID of a session)
             if((Array.isArray(channel) && (channel[1] === 'im_chat.session' || channel[1] === 'im_chat.presence')) || (regex_uuid.test(channel))){
+                //console.log("######## RECEIVE : ", message);
                 // message to display in the chatview
-                if (message.type == "message" || message.type == "meta") {
+                if (message.type === "message" || message.type === "meta") {
                     self.received_message(message);
                 }
                 // activate the received session

@@ -20,7 +20,8 @@
             var self = this;
             self.activated = true;
             var data = {'channels': self.channels, 'last': self.last, 'options' : self.options};
-            this.request = openerp.jsonRpc('/longpolling/poll', 'call', data).then(function(result) {
+            console.log("########### POLL : ", JSON.stringify(data));
+            openerp.jsonRpc('/longpolling/poll', 'call', data).then(function(result) {
                 _.each(result, _.bind(self.on_notification, self));
                 self.poll();
             }, function(unused, e) {
@@ -29,6 +30,7 @@
             });
         },
         on_notification: function(notification) {
+            console.log("################## NOTIF", JSON.stringify(notification));
             if (notification.id > this.last) {
                 this.last = notification.id;
             }

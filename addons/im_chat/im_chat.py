@@ -25,30 +25,31 @@ AWAY_TIMER = 600 # 10 minutes
 class Controller(openerp.addons.im.im.Controller):
     def _poll(self, dbname, channels, last, options):
         if request.session.uid:
-            registry, cr, uid, context = request.registry, request.cr, request.session.uid, request.context
+            registry, cr, uid, context = request.registry, request.cr, request.uid, request.context
             registry.get('im_chat.presence').update(cr, uid, ('im_presence' in options), context=context)
             cr.commit()
             # listen to connection and disconnections
             channels.append((request.db,'im_chat.presence'))
             # channel to receive message
-            channels.append((request.db,'im_chat.session', request.session.uid))
+            channels.append((request.db,'im_chat.session', request.uid))
         return super(Controller, self)._poll(dbname, channels, last, options)
 
-    @openerp.http.route('/im/init', type="json", auth="none")
+    @openerp.http.route('/im/init', type="json", auth="public")
     def init(self):
-        registry, cr, uid, context = request.registry, request.cr, request.session.uid, request.context
+        registry, cr, uid, context = request.registry, request.cr, request.uid, request.context
         notifications = registry['im_chat.message'].init_messages(cr, uid, context=context)
         return notifications
 
-    @openerp.http.route('/im/post', type="json", auth="none")
+    @openerp.http.route('/im/post', type="json", auth="public")
     def post(self, uuid, message_type, message_content):
-        registry, cr, uid, context = request.registry, request.cr, request.session.uid, request.context
+        registry, cr, uid, context = request.registry, request.cr, request.uid, request.context
+        print "############################### post : ", uid
         message_id = registry["im_chat.message"].post(cr, uid, uuid, message_type, message_content, context=context)
         return message_id
 
-    @openerp.http.route('/im/image', type='http', auth="none")
+    @openerp.http.route('/im/image', type='http', auth="public")
     def image(self, uuid, user_id):
-        registry, cr, context, uid = request.registry, request.cr, request.context, request.session.uid
+        registry, cr, context, uid = request.registry, request.cr, request.context, request.uid
         # get the image
         Session = registry.get("im_chat.session")
         image_b64 = Session.get_image(cr, uid, uuid, simplejson.loads(user_id), context)
@@ -141,13 +142,14 @@ class im_chat_session(osv.Model):
         for session in self.browse(cr, uid, sids, context=context):
             if user_id not in [u.id for u in session.user_ids]:
                 self.write(cr, uid, [session.id], {'user_ids': [(4, user_id)]}, context=context)
-                # notify the all the channel users and anonymus channel
+                # notify the all the channel users and anonymous channel
                 notifications = []
                 for channel_user_id in session.user_ids:
                     info = self.session_info(cr, channel_user_id.id, [session.id])
                     notifications.append([(cr.dbname, 'im_chat.session', channel_user_id.id), info])
-                info = self.session_info(cr, None, [session.id])
-                notifications.append([session.uuid, info])
+                    # TODO make it work !!
+                #info = self.session_info(cr, None, [session.id], context=context)
+                #notifications.append([session.uuid, info])
                 self.pool['im.bus'].sendmany(cr, uid, notifications)
                 # send a message to the conversation
                 user = self.pool['res.users'].read(cr, uid, user_id, ['name'], context=context)
@@ -158,7 +160,7 @@ class im_chat_session(osv.Model):
         #default image
         image_b64 = 'R0lGODlhAQABAIABAP///wAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw=='
         # get the session
-        session_id = self.pool["im_chat.session"].search(cr, openerp.SUPERUSER_ID, [('uuid','=',uuid), ('user_ids','in', user_id)])
+        session_id = self.pool["im_chat.session"].search(cr, uid, [('uuid','=',uuid), ('user_ids','in', user_id)])
         if session_id:
             # get the image of the user
             res = self.pool["res.users"].read(cr, openerp.SUPERUSER_ID, [user_id], ["image_small"])[0]
@@ -254,8 +256,8 @@ class im_chat_presence(osv.Model):
 
     def update(self, cr, uid, presence=True, context=None):
         """ register the poll, and change its im status if necessary. It also notify the Bus if the status has changed. """
-        presence_ids = self.search(cr, openerp.SUPERUSER_ID, [('user_id', '=', uid)], context=context)
-        presences = self.browse(cr, openerp.SUPERUSER_ID, presence_ids, context=context)
+        presence_ids = self.search(cr, uid, [('user_id', '=', uid)], context=context)
+        presences = self.browse(cr, uid, presence_ids, context=context)
         # set the default values
         send_notification = True
         vals = {
@@ -266,7 +268,7 @@ class im_chat_presence(osv.Model):
         if not presences:
             vals['status'] = 'online'
             vals['user_id'] = uid
-            self.create(cr, openerp.SUPERUSER_ID, vals, context=context)
+            self.create(cr, uid, vals, context=context)
         else:
             if presence:
                 vals['last_presence'] = time.strftime(DEFAULT_SERVER_DATETIME_FORMAT)
@@ -276,7 +278,7 @@ class im_chat_presence(osv.Model):
                 if datetime.datetime.strptime(presences[0].last_presence, DEFAULT_SERVER_DATETIME_FORMAT) < threshold:
                     vals['status'] = 'away'
             send_notification = presences[0].status != vals['status']
-            self.write(cr, openerp.SUPERUSER_ID, presence_ids, vals, context=context)
+            self.write(cr, uid, presence_ids, vals, context=context)
         # avoid TransactionRollbackError
         cr.commit()
         # notify if the status has changed
@@ -290,9 +292,9 @@ class im_chat_presence(osv.Model):
     def check_users_disconnection(self, cr, uid, context=None):
         """ disconnect the users having a too old last_poll """
         dt = (datetime.datetime.now() - datetime.timedelta(0, DISCONNECTION_TIMER)).strftime(DEFAULT_SERVER_DATETIME_FORMAT)
-        presence_ids = self.search(cr, openerp.SUPERUSER_ID, [('last_poll', '<', dt)], context=context)
-        self.write(cr, openerp.SUPERUSER_ID, presence_ids, {'status': 'offline'}, context=context)
-        presences = self.browse(cr, openerp.SUPERUSER_ID, presence_ids, context=context)
+        presence_ids = self.search(cr, uid, [('last_poll', '<', dt)], context=context)
+        self.write(cr, uid, presence_ids, {'status': 'offline'}, context=context)
+        presences = self.browse(cr, uid, presence_ids, context=context)
         notifications = []
         for presence in presences:
             notifications.append([(cr.dbname,'im_chat.presence'), [{'id': presence.user_id.id, 'im_status': presence.status}]])

@@ -31,7 +31,7 @@ from openerp.http import request
 
 class LiveChatController(http.Controller):
 
-    @http.route('/im_livechat/support/<string:dbname>/<int:channel_id>', type='http', auth='none')
+    @http.route('/im_livechat/support/<string:dbname>/<int:channel_id>', type='http', auth='public')
     def support_page(self, dbname, channel_id, **kwargs):
         registry, cr, uid, context = openerp.modules.registry.RegistryManager.get(dbname), request.cr, request.uid, request.context
         info = registry.get('im_livechat.channel').get_info_for_chat_src(cr, uid, channel_id)
@@ -40,7 +40,7 @@ class LiveChatController(http.Controller):
         info["channel_name"] = registry.get('im_livechat.channel').read(cr, uid, channel_id, ['name'], context=context)["name"]
         return request.render('im_livechat.support_page', info)
 
-    @http.route('/im_livechat/loader/<string:dbname>/<int:channel_id>', type='http', auth='none')
+    @http.route('/im_livechat/loader/<string:dbname>/<int:channel_id>', type='http', auth='public')
     def loader(self, dbname, channel_id, **kwargs):
         registry, cr, uid, context = openerp.modules.registry.RegistryManager.get(dbname), request.cr, request.uid, request.context
         info = registry.get('im_livechat.channel').get_info_for_chat_src(cr, uid, channel_id)
@@ -49,7 +49,7 @@ class LiveChatController(http.Controller):
         info["username"] = kwargs.get("username", "Visitor")
         return request.render('im_livechat.loader', info)
 
-    @http.route('/im_livechat/get_session', type="json", auth="none")
+    @http.route('/im_livechat/get_session', type="json", auth="public")
     def get_session(self, channel_id, anonymous_name):
         cr, uid, context, db = request.cr, request.uid, request.context, request.db
         reg = openerp.modules.registry.RegistryManager.get(db)
@@ -66,7 +66,7 @@ class LiveChatController(http.Controller):
         session = reg.get("im_livechat.channel").get_channel_session(cr, uid, channel_id, anonymous_name, context=context)
         return session
 
-    @http.route('/im_livechat/available', type='json', auth="none")
+    @http.route('/im_livechat/available', type='json', auth="public")
     def available(self, db, channel):
         cr, uid, context, db = request.cr, request.uid, request.context, request.db
         reg = openerp.modules.registry.RegistryManager.get(db)
