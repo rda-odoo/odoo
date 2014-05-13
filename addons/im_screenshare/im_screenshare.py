@@ -18,29 +18,68 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ##############################################################################
-from openerp.osv import osv, fields
-
+import openerp
 import logging
+import simplejson
+
+from openerp.osv import osv, fields
+from openerp.http import request
+from openerp.addons.im.im import bus
+
 _logger = logging.getLogger(__name__)
 
-class screen_record(osv.Model):
-    _name = 'screen.record'
+
+#----------------------------------------------------------
+# Controllers
+#----------------------------------------------------------
+
+class Controller(openerp.addons.im.im.Controller):
+
+    def _poll(self, cr, channels, last, options):
+        # private user channel to receive screenshare message
+        channels.append((request.db, 'im_screenshare', request.session.uid))
+        # for all the public channels, add the screenshare channel
+        for c in channels:
+            if isinstance(c, basestring):
+                channels.append((request.db, 'im_screenshare', c))
+        return super(Controller, self)._poll(cr, channels, last, options)
+
+    @openerp.http.route('/im_screenshare/share', type="json", auth="none")
+    def share(self, uuid, message):
+        registry, cr, context, uid = request.registry, request.cr, request.context, request.session.uid
+        return bus.sendone(cr, (request.cr.dbname,'im_screenshare', uuid), message)
+
+    @openerp.http.route(['/im_screenshare/player/<string:uuid>','/im_screenshare/player/<int:id>/<string:dbname>'], type='http', auth='none')
+    def player(self, uuid=None, id=None, dbname=None):
+        params = {
+            "uuid" : uuid,
+            "id" : id,
+            "dbname" : dbname
+        }
+        return request.render('im_screenshare.player_page', dict(params = simplejson.dumps(params)))
+
+
+#----------------------------------------------------------
+# Models
+#----------------------------------------------------------
+
+class im_screenshare_record(osv.Model):
+    _name = 'im_screenshare.record'
     _columns = {
-        # 'name' : fields.function(_get_name, type="char", store=True, string="name"),
         'name' : fields.char('Title'),
         'starttime' : fields.datetime('Start Time', readonly=True),     # Obtained from webclient's messsages
         'endtime' : fields.datetime('End Time', readonly=True),
         'duration' : fields.datetime('Total Time', readonly=True),
         'user_id' : fields.many2one('res.users', 'User', readonly=True),
-        'event_ids' : fields.one2many('screen.record.event', 'screen_record_id', 'Events', readonly=True),
-        'description' : fields.text('Description'),        
+        'event_ids' : fields.one2many('im_screenshare.record.event', 'screen_record_id', 'Events', readonly=True),
+        'description' : fields.text('Description'),
     }
     _defaults = {
         'user_id': lambda self,cr,uid,context: uid
     }
 
     def play_screen_record(self, cr, uid, id, context=None):
-        url="/screen_record/static/src/html/player.html?id=" + str(id[0]) + "&db=" + cr.dbname
+        url="/im_screenshare/player/" + str(id[0]) + "/" + cr.dbname
         _logger.debug(url)
         return {
             'type': 'ir.actions.act_url',
@@ -48,13 +87,13 @@ class screen_record(osv.Model):
             'target': '_blank'
         }
 
-class screen_record_event(osv.Model):
-    _name = "screen.record.event"
+class im_screenshare_record_event(osv.Model):
+    _name = "im_screenshare.record.event"
     _rec_name = "screen_record_id"
     _columns = {
-        'screen_record_id' : fields.many2one('screen.record', 'Screen Record', readonly=True),
+        'screen_record_id' : fields.many2one('im_screenshare.record', 'Screen Record', readonly=True),
         'timestamp' : fields.float('Timestamp', readonly=True),
         'timestamp_date' : fields.datetime('Timestamp', readonly=True),
         'notes': fields.text('Internal Notes'),
-        'msglist' : fields.text('Messages', readonly=True),        
+        'msglist' : fields.text('Messages', readonly=True),
     }
