@@ -80,6 +80,21 @@ class im_chat_session(osv.Model):
     _order = 'id desc'
     _name = 'im_chat.session'
     _rec_name = 'uuid'
+
+    def _get_fullname(self, cr, uid, ids, fields, arg, context=None):
+        """ built the header of a given session """
+        result = {}
+        sessions = self.pool["im_chat.session"].browse(cr, uid, ids, context=context)
+        for session in sessions:
+            name = []
+            if (uid is not None) and session.name:
+                name.append(session.name)
+            for u in session.user_ids:
+                if u.id != uid:
+                    name.append(u.name)
+            result[session.id] = ', '.join(name)
+        return result
+
     _columns = {
         'uuid': fields.char('UUID', size=50, select=True),
         'name' : fields.char('Name'),
