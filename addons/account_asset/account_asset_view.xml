@@ -99,6 +99,7 @@
                             <field name="category_id" on_change="onchange_category_id(category_id)"/>
                             <field name="code"/>
                             <field name="parent_id"/>
+                            <field name="purchase_invoice_id"/>
                         </group>
                         <group>
                             <field name="purchase_date"/>
@@ -131,7 +132,7 @@
                             </group>
                         </page>
                         <page string="Depreciation Board">
-                            <field name="depreciation_line_ids" mode="tree">
+                            <field name="depreciation_line_ids" mode="tree" options="{'reload_whole_on_button': true}">
                                 <tree string="Depreciation Lines" colors="blue:(move_check == False);black:(move_check == True)">
                                     <field name="depreciation_date"/>
                                     <field name="sequence" invisible="1"/>

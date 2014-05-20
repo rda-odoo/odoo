@@ -10,8 +10,8 @@
             <field name="account_asset_id" ref="account.xfa"/>
             <field name="account_depreciation_id" ref="account.xfa"/>
             <field name="journal_id" ref="account.expenses_journal"/>
-            <field name="name">Hardware - 3 Years</field>
-            <field name="method_number">3</field>
+            <field name="name">Hardware - 1 Years</field>
+            <field name="method_number">1</field>
         </record>
 
         <record id="account_asset_category_sale" model="account.asset.category">
@@ -19,8 +19,8 @@
             <field name="account_asset_id" ref="account.xfa"/>
             <field name="account_depreciation_id" ref="account.xfa"/>
             <field name="journal_id" ref="account.expenses_journal"/>
-            <field name="name">Cars - 5 Years</field>
-            <field name="method_number">5</field>
+            <field name="name">Cars - 1 Years</field>
+            <field name="method_number">1</field>
         </record>
 
 
@@ -29,8 +29,8 @@
             <field name="account_asset_id" ref="account.xfa"/>
             <field name="account_depreciation_id" ref="account.xfa"/>
             <field name="journal_id" ref="account.expenses_journal"/>
-            <field name="name">Revenue Recognition Maintenance Contract - 3 Years</field>
-            <field name="method_number">3</field>
+            <field name="name">Revenue Recognition Maintenance Contract - 1 Years</field>
+            <field name="method_number">1</field>
         </record>
 
         <!-- 
@@ -40,29 +40,19 @@
         <record id="account_asset_asset_vehicles0" model="account.asset.asset">
             <field eval="2000.0" name="salvage_value"/>
             <field name="state">open</field>
-            <field eval="12" name="method_period"/>
-            <field eval="10" name="method_number"/>
+            <field eval="1" name="method_period"/>
+            <field eval="6" name="method_number"/>
             <field name="name">CEO's Car</field>
             <field eval="12000.0" name="purchase_value"/>
             <field name="category_id" ref="account_asset_category_fixedassets0"/>
         </record>
 
-        <record id="account_asset_asset_cab0" model="account.asset.asset">
-            <field name="method_end" eval="(DateTime.now().replace(month=8, day=11) + timedelta(days=3*365)).strftime('%Y-%m-%d')"/>
-            <field eval="0.0" name="salvage_value"/>
-            <field name="method_time">end</field>
-            <field name="name">V6 Engine and 10 inches tires</field>
-            <field eval="2800.0" name="purchase_value"/>
-            <field name="category_id" ref="account_asset_category_fixedassets0"/>
-            <field name="parent_id" ref="account_asset_asset_vehicles0"/>
-        </record>
-        
         <record id="account_asset_asset_office0" model="account.asset.asset">
             <field eval="1" name="prorata"/>
             <field eval="100000.0" name="salvage_value"/>
             <field name="state">open</field>
-            <field eval="12" name="method_period"/>
-            <field eval="20" name="method_number"/>
+            <field eval="1" name="method_period"/>
+            <field eval="12" name="method_number"/>
             <field name="purchase_date" eval="time.strftime('%Y-01-01')"/>
             <field name="name">Office</field>
             <field eval="500000.0" name="purchase_value"/>
