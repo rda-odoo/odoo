@@ -20,11 +20,11 @@
 
 from openerp.osv import osv
 
-"""Inherit res.currency to handle accounting date values when converting currencies"""
+"""Inherit res.currency to handle accounting date values when converting currencies..........."""
 
 class res_currency_account(osv.osv):
     _inherit = "res.currency"
-
+    
     def _get_conversion_rate(self, cr, uid, from_currency, to_currency, context=None):
         if context is None:
             context = {}
