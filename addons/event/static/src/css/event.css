@@ -1,3 +1,7 @@
+.openerp .oe_kanban_event {
+  width: 355px;
+  min-height: 230px !important
+}
 .oe_event_date{
   border-top-left-radius:3px;
   border-top-right-radius:3px;
@@ -9,6 +13,7 @@
   color: #FFFFFF;
   -webkit-box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
   background-color: #8A89BA;
+  margin-right: 0px !important;
 }
 .oe_event_time{
   border-bottom-left-radius:3px;

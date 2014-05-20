@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 ##############################################################################
 #
-#    OpenERP, Open Source Management Solution
-#    Copyright (C) 2004-2010 Tiny SPRL (<http://tiny.be>).
+#    OpenERP, Open Source Business Applications
+#    Copyright (C) 2004-TODAY OpenERP S.A. (<http://openerp.com>).
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU Affero General Public License as
@@ -18,6 +18,17 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ##############################################################################
+ 
+from openerp.osv import fields, osv
 
-import event_sale
-import res_config
+class event_config_settings(osv.osv_memory):
+    _inherit = 'marketing.config.settings'
+
+    _columns = {
+        'group_publish_events': fields.boolean('Publish your event',
+            implied_group='website_event.group_publish_events',
+            help='Publish your event in the web.'),
+        'group_advanced_event_features': fields.boolean('Manage advanced event features',
+            implied_group='website_event.group_advanced_event_features',
+            help='Manage advanced event features like etracking, agenda, sponsors.'),
+    }

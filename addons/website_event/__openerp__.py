@@ -9,13 +9,14 @@
 Online Events
         """,
     'author': 'OpenERP SA',
-    'depends': ['website', 'website_partner', 'website_mail', 'event'],
+    'depends': ['website', 'website_partner', 'website_mail', 'event', 'mass_mailing'],
     'data': [
         'data/event_data.xml',
         'views/website_event.xml',
         'views/website_event_sale_backend.xml',
         'security/ir.model.access.csv',
         'security/website_event.xml',
+        'views/res_config_view.xml',
     ],
     'qweb': ['static/src/xml/*.xml'],
     'demo': [

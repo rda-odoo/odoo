@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<openerp>
+    <data>
+        <record id="view_event_config" model="ir.ui.view">
+            <field name="name">Configure Events</field>
+            <field name="model">marketing.config.settings</field>
+            <field name="inherit_id" ref="marketing.view_marketing_configuration"/>
+            <field name="arch" type="xml">
+                <div name="lead automation" position="before">
+                    <div name="event_management" invisible="1">
+                        <separator string="Event Management"/>
+                        <group>
+                            <label for="id" string="Event Management"/>
+                            <div>
+                                <div name="event_sale_manage_tickets"/>
+                                <div name="website_event_promotion"/>
+                            </div>
+                        </group>
+                    </div>
+                </div>
+            </field>
+        </record>
+    </data>
+</openerp>

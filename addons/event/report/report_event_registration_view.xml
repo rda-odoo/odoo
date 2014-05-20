@@ -3,8 +3,8 @@
     <data>
 
         <record model ="ir.ui.view" id="report_event_registration_graph">
-            <field name="name">report.event.registration.graph</field>
-            <field name="model">report.event.registration</field>
+            <field name="name">report.event.registration_attendee.graph</field>
+            <field name="model">report.event.registration_attendee</field>
             <field name="arch" type="xml">
                 <graph string="Event on Registration"  type="pivot" >
                     <field name="event_type" type="row"/>
@@ -17,8 +17,8 @@
 
         <!-- Event on Registration search view -->
         <record model="ir.ui.view" id="view_report_event_registration_search">
-            <field name="name">report.event.registration.search</field>
-            <field name="model">report.event.registration</field>
+            <field name="name">report.event.registration_attendee.search</field>
+            <field name="model">report.event.registration_attendee</field>
             <field name="arch" type="xml">
                 <search string="Event on Registration">
                     <filter icon="terp-document-new" string="New" domain="[('event_state','=','draft')]" help="Events which are in New state"/>
@@ -55,7 +55,7 @@
 
         <record model="ir.actions.act_window" id="action_report_event_registration">
             <field name="name">Events Analysis</field>
-            <field name="res_model">report.event.registration</field>
+            <field name="res_model">report.event.registration_attendee</field>
             <field name="view_type">form</field>
             <field name="view_mode">graph</field>
             <field name="search_view_id" ref="view_report_event_registration_search"/>

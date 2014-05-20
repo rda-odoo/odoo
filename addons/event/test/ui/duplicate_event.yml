@@ -9,7 +9,7 @@
 -
   Copy of event registarion.
 -
-  !python {model: event.registration}: |
+  !python {model: event.registration_attendee}: |
     try:
       self.copy(cr, uid, ref("reg_1_1"))
     except:

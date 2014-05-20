@@ -207,11 +207,16 @@
                     </ol>
                     <ol class="breadcrumb mb0" id="event_menu" t-if="event.menu_id">
                         <t t-foreach="event.menu_id.child_id" t-as="submenu">
-                            <t t-call="website.submenu"/>
+                            <t t-if="submenu.name not in ['Agenda', 'Location']">
+                                <t t-call="website.submenu"/>
+                            </t>
+                            <t t-if="submenu.name in ['Agenda', 'Location']" groups="website_event.group_advanced_event_features">
+                                <t t-call="website.submenu"/>
+                            </t>
                         </t>
                     </ol>
                 </div>
-                <div class="col-sm-5" groups="event.group_event_manager">
+                <div class="col-sm-5" groups="event.group_event_manager,website_event.group_publish_events">
                     <t t-call="website.publish_management">
                       <t t-set="object" t-value="event"/>
                       <t t-set="publish_edit" t-value="True"/>
@@ -299,6 +304,11 @@
                 </li>
             </ul>
         </div>
+        <div class="col-md-4 mb16">
+            <t t-call="website_mail.follow">
+                <t t-set="object" t-value="event"/>
+            </t>
+        </div>
         <div class="col-md-4 css_noprint">
             <div class="clearfix"/>
 
@@ -342,7 +352,6 @@
                     <h4>Social Stream</h4>
                 </div>
                 <div class="panel-body">
-                    <t t-call="website_mail.follow"><t t-set="object" t-value="event"/></t>
                     <div t-if="event.twitter_hashtag" class="mt16">
                         <p><strong>Participate on Twitter</strong></p>
                         <p class="text-muted">

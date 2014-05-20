@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="website_event_saleattendee">
+        <div class="row">
+            <div>
+                <table class='table'>
+                    <caption><strong class='text-center'><t t-raw="views.ticket_name"/></strong></caption>
+                    <thead>
+                        <tr>
+                            <th />
+                            <th>First Name</th>
+                            <th>Last Name</th>
+                            <th>Email</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <t t-foreach="views.selected_item" t-as="attendee">
+                            <tr class='form-group'>
+                                <td>Attendee<t t-raw="attendee"/></td>
+                                <td><input class='form-control input-sm' type='text' name='attendee-first_name-%d" % views.ticket_id  + "-%d" % attendee + "'/></td>
+                                <td><input class='form-control input-sm' type='text' name='attendee-last_name-%d" % views.ticket_id  + "-%d" % attendee + "'/></td>
+                                <td><input class='form-control input-sm' type='email' name='attendee-email-%d" % views.ticket_id  + "-%d" % attendee + "' required="required"/></td>
+                            </tr>
+                         </t>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </t>
+</templates>

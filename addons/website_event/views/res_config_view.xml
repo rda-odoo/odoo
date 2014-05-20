@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<openerp>
+    <data>
+        <record id="view_website_event_config" model="ir.ui.view">
+            <field name="name">Configure Events</field>
+            <field name="model">marketing.config.settings</field>
+            <field name="inherit_id" ref="event.view_event_config"/>
+            <field name="arch" type="xml">
+                <div name="event_management" position="attributes">
+                    <attribute name="invisible">0</attribute>
+                </div>
+                <div name="website_event_promotion" position="replace">
+                    <div>
+                        <field name="group_publish_events" class="oe_inline"/>
+                        <label for="group_publish_events"/>
+                    </div>
+                    <div>
+                        <field name="group_advanced_event_features" class="oe_inline"/>
+                        <label for="group_advanced_event_features"/>
+                    </div>
+                </div>
+            </field>
+        </record>
+    </data>
+</openerp>

@@ -45,7 +45,7 @@
 -
     I check if a registration is created
 -
-    !python {model: event.registration}: |
+    !python {model: event.registration_attendee}: |
         order_id = ref('order1')
         order =  self.pool.get('sale.order').browse(cr, uid,order_id)
         registration_ids = self.search(cr,uid,[('origin','=',order.name)])

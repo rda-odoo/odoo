@@ -2,18 +2,30 @@
 <openerp>
 <data>
 
-    <record model="ir.ui.view" id="view_event_sale_form">
+    <record id="action_view_mass_mailings1" model="ir.actions.act_window">
+        <field name="name">Mass Mailings</field>
+        <field name="res_model">mail.mass_mailing</field>
+        <field name="view_id" ref="mass_mailing.action_view_mass_mailings"/>
+        <field name="view_type">form</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <record model="ir.ui.view" id="view_event_form">
         <field name="name">event.event.website.form</field>
         <field name="model">event.event</field>
         <field name="inherit_id" ref="event.view_event_form"/>
         <field name="arch" type="xml">
-            <!-- add state field in header -->
-            <xpath expr="//div[@class='oe_right oe_button_box']" position="before">
-                <field name="website_url" invisible="1"/>
-                <field name="website_published" class="pull-right" widget="website_button"/>
+            <xpath expr="//notebook/page[@string='Event Management']" position="attributes">
+                <attribute name="invisible">0</attribute>
             </xpath>
-            <xpath expr="//field[@name='organizer_id']" position="after">
-                <field name="twitter_hashtag"/>
+            <xpath expr="//notebook/page[@string='Event Management']/div[@name='promotion']" position="replace">
+                <group string="Event Promotion and Visibility">
+                    <field name="website_published" class="pull-left" widget="website_button" string=" " groups="website_event.group_publish_events"/>
+                    <field name="website_url" string="Publish" widget="url"/>
+                    <label for="%(action_view_mass_mailings1)d" />
+                    <button name="%(action_view_mass_mailings1)d" string="Send Invitation by Email" type="action" />
+                </group>
             </xpath>
         </field>
     </record>

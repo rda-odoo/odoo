@@ -17,7 +17,7 @@
                 element:   '#content-menu-button',
                 placement: 'left',
                 title:     _t("Add Content"),
-                content:   _t("The <em>Content</em> menu allows you to create new pages, events, menus, etc."),
+                content:   _t("Use this <em>Content</em> menu to create a new event like any other document (page, menu, products, blog post, ...)"),
                 popover:   { fixed: true },
             },
             {
@@ -32,7 +32,7 @@
                 sampleText: 'Advanced Technical Training',
                 placement: 'right',
                 title:     _t("Create an Event Name"),
-                content:   _t("Create a name for your new event and click <em>'Continue'</em>. e.g: Technical Training"),
+                content:   _t("Add a name for your new event e.g: New product demo"),
             },
             {
                 waitNot:   '.modal input[type=text]:not([value!=""])',

@@ -88,7 +88,10 @@ class event(osv.osv):
         return re.sub("[- \\.\\(\\)\\@\\#\\&]+", "", name).lower()
 
     _columns = {
+        'activate_social_media': fields.boolean('Activate social media'),
         'twitter_hashtag': fields.char('Twitter Hashtag'),
+        'twitter_account_name': fields.char('Twitter account name'),
+        'facebook_account_name': fields.char('Facebook account name'),
         'website_published': fields.boolean('Visible in Website'),
         # TDE TODO FIXME: when website_mail/mail_thread.py inheritance work -> this field won't be necessary
         'website_message_ids': fields.one2many(
@@ -111,7 +114,7 @@ class event(osv.osv):
     def google_map_img(self, cr, uid, ids, zoom=8, width=298, height=298, context=None):
         event = self.browse(cr, uid, ids[0], context=context)
         if event.address_id:
-            return self.browse(cr, SUPERUSER_ID, ids[0], context=context).address_id.google_map_img()
+            return self.browse(cr, SUPERUSER_ID, ids[0], context=context).address_id.google_map_img(zoom=zoom, width=width, height=height, context=context)
         return None
 
     def google_map_link(self, cr, uid, ids, zoom=8, context=None):
@@ -119,4 +122,3 @@ class event(osv.osv):
         if event.address_id:
             return self.browse(cr, SUPERUSER_ID, ids[0], context=context).address_id.google_map_link()
         return None
-

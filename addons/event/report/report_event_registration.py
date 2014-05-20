@@ -22,8 +22,8 @@
 from openerp.osv import fields, osv
 from openerp import tools
 
-class report_event_registration(osv.osv):
-    _name = "report.event.registration"
+class report_event_registration_attendee(osv.osv):
+    _name = "report.event.registration_attendee"
     _description = "Events Analysis"
     _auto = False
     _columns = {
@@ -47,10 +47,10 @@ class report_event_registration(osv.osv):
         """
         Initialize the sql view for the event registration
         """
-        tools.drop_view_if_exists(cr, 'report_event_registration')
+        tools.drop_view_if_exists(cr, 'report_event_registration_attendee')
 
         # TOFIX this request won't select events that have no registration
-        cr.execute(""" CREATE VIEW report_event_registration AS (
+        cr.execute(""" CREATE VIEW report_event_registration_attendee AS (
             SELECT
                 e.id::varchar || '/' || coalesce(r.id::varchar,'') AS id,
                 e.id AS event_id,
@@ -68,7 +68,7 @@ class report_event_registration(osv.osv):
                 r.state AS registration_state
             FROM
                 event_event e
-                LEFT JOIN event_registration r ON (e.id=r.event_id)
+                LEFT JOIN event_registration_attendee r ON (e.id=r.event_id)
 
             GROUP BY
                 event_id,

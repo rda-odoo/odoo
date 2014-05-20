@@ -24,17 +24,28 @@ from openerp.addons.web import http
 from openerp.addons.web.http import request
 from openerp.addons.website_event.controllers.main import website_event
 from openerp.tools.translate import _
+from collections import defaultdict
 
 
 class website_event(website_event):
 
-    @http.route(['/event/cart/update'], type='http', auth="public", methods=['POST'], website=True, multilang=True)
+    @http.route(['/event/cart/update'], type='http', auth="public", methods=['POST'], website=True)
     def cart_update(self, event_id, **post):
         cr, uid, context = request.cr, request.uid, request.context
         ticket_obj = request.registry.get('event.event.ticket')
+        attendee_obj = request.registry.get('event.registration_attendee')
+
+        # Split post into 2 dict
+        dict_ticket = {}
+        dict_attendee = {}
+        for key, value in post.items():
+            if key.partition('-')[0] == "ticket":
+                dict_ticket[key] = value
+            else:
+                dict_attendee[key] = value
 
         sale = False
-        for key, value in post.items():
+        for key, value in dict_ticket.items():
             quantity = int(value or "0")
             if not quantity:
                 continue
@@ -43,6 +54,17 @@ class website_event(website_event):
             ticket = ticket_obj.browse(cr, SUPERUSER_ID, ticket_id, context=context)
             request.website.sale_get_order(force_create=1)._cart_update(
                 product_id=ticket.product_id.id, add_qty=quantity, context=dict(context, event_ticket_id=ticket.id))
+
+        # Attendee creation
+        attendees = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
+        for key, value in dict_attendee.items():
+            splitted_key = key.rsplit('-')
+            attendees[splitted_key[2]][splitted_key[3]][splitted_key[1]] = value
+
+        for key1, value1 in attendees.items():
+            for key2, value2 in value1.items():
+                value2['event_id'] = event_id
+                attendee_id = attendee_obj.create(request.cr, SUPERUSER_ID, value2, context=request.context)
 
         if not sale:
             return request.redirect("/event/%s" % event_id)
