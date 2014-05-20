@@ -18,11 +18,15 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ##############################################################################
-
+import pytz
+from openerp.tools import DEFAULT_SERVER_DATETIME_FORMAT
 from datetime import datetime, timedelta
+from dateutil import relativedelta
 from openerp.osv import fields, osv
 from openerp.tools.translate import _
 from openerp import SUPERUSER_ID
+from openerp import tools
+import json
 
 class event_type(osv.osv):
     """ Event Type """
@@ -45,6 +49,7 @@ class event_event(osv.osv):
     """Event"""
     _name = 'event.event'
     _description = __doc__
+    _period_number = 5
     _order = 'date_begin'
     _inherit = ['mail.thread', 'ir.needaction_mixin']
 
@@ -80,7 +85,7 @@ class event_event(osv.osv):
         return self.write(cr, uid, ids, {'state': 'draft'}, context=context)
 
     def button_cancel(self, cr, uid, ids, context=None):
-        registration = self.pool.get('event.registration')
+        registration = self.pool.get('event.registration_attendee')
         reg_ids = registration.search(cr, uid, [('event_id','in',ids)], context=context)
         for event_reg in registration.browse(cr,uid,reg_ids,context=context):
             if event_reg.state == 'done':
@@ -92,7 +97,7 @@ class event_event(osv.osv):
         return self.write(cr, uid, ids, {'state': 'done'}, context=context)
 
     def confirm_event(self, cr, uid, ids, context=None):
-        register_pool = self.pool.get('event.registration')
+        register_pool = self.pool.get('event.registration_attendee')
         for event in self.browse(cr, uid, ids, context=context):
             if event.email_confirmation_id:
             #send reminder that will confirm the event for all the people that were already confirmed
@@ -115,7 +120,7 @@ class event_event(osv.osv):
         res = {}
         for event_id in ids:
             res[event_id] = {key:0 for key in keys.values()}
-        query = "SELECT state, sum(nb_register) FROM event_registration WHERE event_id = %s AND state IN ('draft','open','done') GROUP BY state"
+        query = "SELECT state, sum(nb_register) FROM event_registration_attendee WHERE event_id = %s AND state IN ('draft','open','done') GROUP BY state"
         for event in self.pool.get('event.event').browse(cr, uid, ids, context=context):
             cr.execute(query, (event.id,))
             reg_states = cr.fetchall()
@@ -124,6 +129,7 @@ class event_event(osv.osv):
             res[event.id]['seats_available'] = event.seats_max - \
                 (res[event.id]['seats_reserved'] + res[event.id]['seats_used']) \
                 if event.seats_max > 0 else None
+            res[event.id]['seats_registered'] = res[event.id]['seats_reserved'] + res[event.id]['seats_unconfirmed']
         return res
 
     def _get_events_from_registrations(self, cr, uid, ids, context=None):
@@ -131,14 +137,14 @@ class event_event(osv.osv):
         @return: Dictionary of function field values.
         """
         event_ids=set()
-        for registration in self.pool['event.registration'].browse(cr, uid, ids, context=context):
+        for registration in self.pool['event.registration_attendee'].browse(cr, uid, ids, context=context):
             event_ids.add(registration.event_id.id)
         return list(event_ids)
 
     def _subscribe_fnc(self, cr, uid, ids, fields, args, context=None):
         """This functional fields compute if the current user (uid) is already subscribed or not to the event passed in parameter (ids)
         """
-        register_pool = self.pool.get('event.registration')
+        register_pool = self.pool.get('event.registration_attendee')
         res = {}
         for event in self.browse(cr, uid, ids, context=context):
             res[event.id] = False
@@ -149,12 +155,67 @@ class event_event(osv.osv):
                         res[event.id]= True
                         continue
         return res
-    
+
     def _count_registrations(self, cr, uid, ids, field_name, arg, context=None):
         return {
-            event.id: len(event.registration_ids)
+            event.id : len(event.registration_ids)
             for event in self.browse(cr, uid, ids, context=context)
         }
+
+    def __get_bar_values(self, cr, uid, obj, domain, read_fields, value_field, groupby_field, date_begin, context=None):
+        """ Generic method to generate data for bar chart values using SparklineBarWidget.
+            This method performs obj.read_group(cr, uid, domain, read_fields, groupby_field).
+
+            :param obj: the target model (i.e. crm_lead)
+            :param domain: the domain applied to the read_group
+            :param list read_fields: the list of fields to read in the read_group
+            :param str value_field: the field used to compute the value of the bar slice
+            :param str groupby_field: the fields used to group
+
+            :return list section_result: a list of dicts: [
+                                                {   'value': (int) bar_column_value,
+                                                    'tootip': (str) bar_column_tooltip,
+                                                }
+                                            ]
+        """
+        section_result = [{'value': 0,
+                           'tooltip': (date_begin + relativedelta.relativedelta(days=i)).strftime('%d %B %Y'),
+                           } for i in range(0, self._period_number)]
+        group_obj = obj.read_group(cr, uid, domain, read_fields, groupby_field, context=context)
+        field_col_info = obj._all_columns.get(groupby_field.split(':')[0])
+        pattern = tools.DEFAULT_SERVER_DATE_FORMAT if field_col_info.column._type == 'date' else tools.DEFAULT_SERVER_DATETIME_FORMAT
+        for group in group_obj:
+            group_begin_date = datetime.strptime(group['__domain'][1][2], pattern).date()
+            timedelta = relativedelta.relativedelta(group_begin_date, date_begin)
+            section_result[timedelta.days] = {'value': group.get(value_field, 0), 'tooltip': group.get(groupby_field)}
+        return section_result
+
+    def _count_registrations_per_day(self, cr, uid, ids, field_name, arg, context=None):
+        obj = self.pool['event.registration_attendee']
+        res = {}
+        for count in self.browse(cr, uid, ids, context=context):
+            res[count.id] = {}
+            date_begin = datetime.now().date() + relativedelta.relativedelta(days=-4)
+            date_end = datetime.today() + relativedelta.relativedelta(days=self._period_number - 1)
+            domain = [('event_id', '=', count.id), ('create_date', '>=', date_begin.strftime(tools.DEFAULT_SERVER_DATETIME_FORMAT)), ('create_date', '<=', date_end.strftime(tools.DEFAULT_SERVER_DATETIME_FORMAT))]
+            res[count.id] = self.__get_bar_values(cr, uid, obj, domain, ['create_date','nb_register'], 'nb_register', 'create_date:day', date_begin, context=context)
+        return res
+
+    def _compute_date_tz(self, cr, uid, ids, fld, arg, context=None):
+        if context is None:
+            context = {}
+        res = {}
+        for event in self.browse(cr, uid, ids, context=context):
+            ctx = dict(context, tz=(event.date_tz or 'UTC'))
+            if fld == 'date_begin_located':
+                date_to_convert = event.date_begin
+            elif fld == 'date_end_located':
+                date_to_convert = event.date_end
+            res[event.id] = fields.datetime.context_timestamp(cr, uid, datetime.strptime(date_to_convert, DEFAULT_SERVER_DATETIME_FORMAT), context=ctx)
+        return res
+
+    def _tz_get(self, cr, uid, context=None):
+        return [(x, x) for x in pytz.all_timezones]
 
     _columns = {
         'name': fields.char('Event Name', size=64, required=True, translate=True, readonly=False, states={'done': [('readonly', True)]}),
@@ -163,20 +224,27 @@ class event_event(osv.osv):
         'seats_max': fields.integer('Maximum Avalaible Seats', oldname='register_max', help="You can for each event define a maximum registration level. If you have too much registrations you are not able to confirm your event. (put 0 to ignore this rule )", readonly=True, states={'draft': [('readonly', False)]}),
         'seats_min': fields.integer('Minimum Reserved Seats', oldname='register_min', help="You can for each event define a minimum registration level. If you do not enough registrations you are not able to confirm your event. (put 0 to ignore this rule )", readonly=True, states={'draft': [('readonly', False)]}),
         'seats_reserved': fields.function(_get_seats, oldname='register_current', string='Reserved Seats', type='integer', multi='seats_reserved',
-            store={'event.registration': (_get_events_from_registrations, ['state'], 10),
+            store={'event.registration_attendee': (_get_events_from_registrations, ['state'], 10),
                    'event.event': (lambda  self, cr, uid, ids, c = {}: ids, ['seats_max', 'registration_ids'], 20)}),
         'seats_available': fields.function(_get_seats, oldname='register_avail', string='Available Seats', type='integer', multi='seats_reserved',
-            store={'event.registration': (_get_events_from_registrations, ['state'], 10),
+            store={'event.registration_attendee': (_get_events_from_registrations, ['state'], 10),
                    'event.event': (lambda  self, cr, uid, ids, c = {}: ids, ['seats_max', 'registration_ids'], 20)}),
         'seats_unconfirmed': fields.function(_get_seats, oldname='register_prospect', string='Unconfirmed Seat Reservations', type='integer', multi='seats_reserved',
-            store={'event.registration': (_get_events_from_registrations, ['state'], 10),
+            store={'event.registration_attendee': (_get_events_from_registrations, ['state'], 10),
                    'event.event': (lambda  self, cr, uid, ids, c = {}: ids, ['seats_max', 'registration_ids'], 20)}),
         'seats_used': fields.function(_get_seats, oldname='register_attended', string='Number of Participations', type='integer', multi='seats_reserved',
-            store={'event.registration': (_get_events_from_registrations, ['state'], 10),
+            store={'event.registration_attendee': (_get_events_from_registrations, ['state'], 10),
                    'event.event': (lambda  self, cr, uid, ids, c = {}: ids, ['seats_max', 'registration_ids'], 20)}),
-        'registration_ids': fields.one2many('event.registration', 'event_id', 'Registrations', readonly=False, states={'done': [('readonly', True)]}),
+        'seats_registered': fields.function(_get_seats, string='Number of Seats Registered', type='integer', multi='seats_reserved',
+            store={'event.registration_attendee': (_get_events_from_registrations, ['state'], 10),
+                   'event.event': (lambda  self, cr, uid, ids, c = {}: ids, ['seats_max', 'registration_ids'], 20)}),
+        'registration_ids': fields.one2many('event.registration_attendee', 'event_id', 'Registrations', readonly=False, states={'done': [('readonly', True)]}),
+        'date_tz': fields.selection(_tz_get, string='Timezone'),
+        'track_ids': fields.one2many('event.track', 'event_id', 'Tracks', readonly=False),
         'date_begin': fields.datetime('Start Date', required=True, readonly=True, states={'draft': [('readonly', False)]}),
         'date_end': fields.datetime('End Date', required=True, readonly=True, states={'draft': [('readonly', False)]}),
+        'date_begin_located': fields.function(_compute_date_tz, string='Start Date Located', type="datetime"),
+        'date_end_located': fields.function(_compute_date_tz, string='End Date Located', type="datetime"),
         'state': fields.selection([
             ('draft', 'Unconfirmed'),
             ('cancel', 'Cancelled'),
@@ -198,13 +266,21 @@ class event_event(osv.osv):
         'is_subscribed' : fields.function(_subscribe_fnc, type="boolean", string='Subscribed'),
         'organizer_id': fields.many2one('res.partner', "Organizer"),
         'count_registrations': fields.function(_count_registrations, type="integer", string="Registrations"),
+        'registration_per_day': fields.function(_count_registrations_per_day, type="string", string="Registrations per day"),
+        'location': fields.selection([("online", "Online Event"),
+                                      ("physical", "Physical Event")], "Location"),
+        'event_reminder_ids': fields.one2many('event.reminder', 'event_id', "Event Reminders"),
+        'attendee_ids': fields.one2many('event.registration_attendee', 'event_id', "Attendees"),
+        'color': fields.integer('Color Index'),
     }
     _defaults = {
         'state': 'draft',
         'company_id': lambda self,cr,uid,c: self.pool.get('res.company')._company_default_get(cr, uid, 'event.event', context=c),
         'user_id': lambda obj, cr, uid, context: uid,
         'organizer_id': lambda self, cr, uid, c: self.pool.get('res.users').browse(cr, uid, uid, context=c).company_id.partner_id.id,
-        'address_id': lambda self, cr, uid, c: self.pool.get('res.users').browse(cr, uid, uid, context=c).company_id.partner_id.id
+        'address_id': lambda self, cr, uid, c: self.pool.get('res.users').browse(cr, uid, uid, context=c).company_id.partner_id.id,
+        'date_tz': lambda self, cr, uid, ctx: ctx.get('tz', "UTC"),
+        'color': 0,
     }
 
     def _check_seats_limit(self, cr, uid, ids, context=None):
@@ -218,7 +294,7 @@ class event_event(osv.osv):
     ]
 
     def subscribe_to_event(self, cr, uid, ids, context=None):
-        register_pool = self.pool.get('event.registration')
+        register_pool = self.pool.get('event.registration_attendee')
         user_pool = self.pool.get('res.users')
         num_of_seats = int(context.get('ticket', 1))
         user = user_pool.browse(cr, uid, uid, context=context)
@@ -231,7 +307,7 @@ class event_event(osv.osv):
         return register_pool.confirm_registration(cr, SUPERUSER_ID, curr_reg_ids, context=context)
 
     def unsubscribe_to_event(self, cr, uid, ids, context=None):
-        register_pool = self.pool.get('event.registration')
+        register_pool = self.pool.get('event.registration_attendee')
         #the unsubscription is done with SUPERUSER_ID because in case we share the kanban view, we want anyone to be able to unsubscribe
         curr_reg_ids = register_pool.search(cr, SUPERUSER_ID, [('user_id', '=', uid), ('event_id', '=', ids[0])])
         return register_pool.button_reg_cancel(cr, SUPERUSER_ID, curr_reg_ids, context=context)
@@ -246,19 +322,13 @@ class event_event(osv.osv):
         (_check_closing_date, 'Error ! Closing Date cannot be set before Beginning Date.', ['date_end']),
     ]
 
-    def onchange_event_type(self, cr, uid, ids, type_event, context=None):
-        values = {}
-        if type_event:
-            type_info =  self.pool.get('event.type').browse(cr,uid,type_event,context)
-            dic ={
-              'reply_to': type_info.default_reply_to,
-              'email_registration_id': type_info.default_email_registration.id,
-              'email_confirmation_id': type_info.default_email_event.id,
-              'seats_min': type_info.default_registration_min,
-              'seats_max': type_info.default_registration_max,
-            }
-            values.update(dic)
-        return values
+    def onchange_event_type(self, cr, uid, ids, event_type_id, context=None):
+        event_reminder_ids = False
+        if event_type_id:
+            type_info =  self.pool.get('event.type').browse(cr, uid, event_type_id, context)
+            template_id = type_info.default_email_event.id
+            event_reminder_ids = [(0, 0, {'email_template': template_id,'unit': 'days', 'element': 'after_subscription' })]
+        return {'value': {'event_reminder_ids': event_reminder_ids}}
 
     def onchange_start_date(self, cr, uid, ids, date_begin=False, date_end=False, context=None):
         res = {'value':{}}
@@ -270,10 +340,35 @@ class event_event(osv.osv):
             res['value'] = {'date_end': date_end.strftime("%Y-%m-%d %H:%M:%S")}
         return res
 
+    def send_reminder_mail(self, cr, uid, ids, template_id, context={}):
+        """
+        Send mail reminder to event attendees.
+        @param ids: ids of event.event.
+        @param template-id: id of the template to send
+        """
+        if not isinstance(ids, (tuple, list)):
+            ids = [ids]
+        res = False
+        vals = {}
+        mail_ids = []
+        mail_pool = self.pool.get('mail.mail')
+        mailmessage_pool = self.pool.get('mail.message')
+        emailtemplate_pool = self.pool.get('email.template')
+        for event in self.browse(cr, uid, ids, context=context):
+            for attendee in event.attendee_ids:
+                if attendee.email:
+                    mail_id = emailtemplate_pool.send_mail(cr, uid, template_id, attendee.id, context=context)
+                    vals['model'] = None  # We don't want to have the mail in the chatter while in queue!
+                    mailmessage = mail_pool.browse(cr, uid, mail_id, context=context).mail_message_id
+                    mailmessage_pool.write(cr, uid, [mailmessage.id], vals, context=context)
+                    mail_ids.append(mail_id)
+        if mail_ids:
+            res = mail_pool.send(cr, uid, mail_ids, context=context)
+        return res
 
 class event_registration(osv.osv):
     """Event Registration"""
-    _name= 'event.registration'
+    _name= 'event.registration_attendee'
     _description = __doc__
     _inherit = ['mail.thread', 'ir.needaction_mixin']
     _columns = {
@@ -395,5 +490,61 @@ class event_registration(osv.osv):
             d = self.onchange_contact_id(cr, uid, ids, addr, part, context)
             data.update(d['value'])
         return {'value': data}
+
+class event_reminder(osv.osv):
+    """ Event Reminder """
+
+    _name='event.reminder'
+
+    _columns = {
+        'number_unit': fields.integer('Number of units', help="number of unit."),
+        'unit': fields.selection([('days', 'Days'),
+                                  ('weeks', 'Weeks'),
+                                  ('months', 'Months')], string="Units", required=True, help="unit of the reminder (days, weeks, month)."),
+        'element' : fields.selection([('after_subscription', 'After Subscription'),
+                                    ('before_event', 'Before Event'),
+                                    ('after_event', 'After Event')], string="Element", required=True, help="(subscription or event)"),
+        'email_template': fields.many2one('email.template', 'Email Template', required=True, help="Email template to be send."),
+        'sended' : fields.boolean("Sended", help="Works for reminder linked to an event and not for a registration (see event.registration_attendee)"),
+        'event_id' : fields.many2one('event.event', 'Event ID'),
+    }
+
+    _defaults = {
+        'number_unit' : 1,
+        'sended' : False,
+    }
+
+    def _get_number_days(self, reminder):
+        if reminder.unit == "days":
+            return reminder.number_unit
+        if reminder.unit == "weeks":
+            return reminder.number_unit * 7
+        if reminder.unit == "months":
+            return reminder.number_unit * 30
+
+    def action_cron_reminder_event(self, cr, uid, context=None):
+        event_obj = self.pool.get('event.event')
+        for event in event_obj.browse(cr, uid, event_obj.search(cr, uid, [], context=context), context):
+            for reminder in event.event_reminder_ids:
+                if reminder.element == "after_subscription":
+                    for subs in event.attendee_ids:
+                        time_to_send = datetime.max
+                        if not subs.reminder_sended:
+                            time_to_send = datetime.strptime(subs.registration_date, '%Y-%m-%d') + timedelta(days=self._get_number_days(reminder))
+                            if time_to_send < datetime.now():
+                                self.pool.get('event.event').send_reminder_mail(cr, uid, event.id, reminder.email_template.id, context=context)
+                                self.pool.get('event.registration_attendee').write(cr, uid, [subs.id], {'reminder_sended': True}, context=context)
+                else:
+                    for subs in event.attendee_ids:
+                        time_to_send = datetime.max
+                        if not reminder.sended:
+                            time_to_send = datetime.max
+                            if reminder.element == "before_event":
+                                time_to_send = datetime.strptime(reminder.event_id.date_begin, '%Y-%m-%d %H:%M:%S') - timedelta(days=self._get_number_days(reminder))
+                            elif reminder.element == "after_event":
+                                time_to_send = datetime.strptime(reminder.event_id.date_end, '%Y-%m-%d %H:%M:%S') + timedelta(days=self._get_number_days(reminder))
+                            if time_to_send < datetime.now():
+                                self.pool.get('event.event').send_reminder_mail(cr, uid, event.id, reminder.email_template.id, context=context)
+                                self.write(cr, uid, [reminder.id], {'sended': True}, context=context)
 
 # vim:expandtab:smartindent:tabstop=4:softtabstop=4:shiftwidth=4:
