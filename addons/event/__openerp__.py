@@ -38,7 +38,7 @@ Key Features
 * Use emails to automatically confirm and send acknowledgements for any event registration
 """,
     'author': 'OpenERP SA',
-    'depends': ['base_setup', 'board', 'email_template', 'marketing'],
+    'depends': ['base_setup', 'board', 'email_template', 'marketing', 'web_kanban_sparkline', ],
     'data': [
         'security/event_security.xml',
         'security/ir.model.access.csv',
@@ -49,6 +49,7 @@ Key Features
         'res_partner_view.xml',
         'email_template.xml',
         'views/event.xml',
+        'res_config_view.xml',
     ],
     'demo': [
         'event_demo.xml',
